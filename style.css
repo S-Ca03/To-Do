@@ -1,0 +1,353 @@
+/* ==========================================================================
+   Mi Lista de Tareas — estilo iOS / "liquid glass"
+   Fondo con luz difusa en movimiento + una tarjeta de vidrio esmerilado
+   como único protagonista. Tipografía del sistema, un solo acento (azul
+   iOS), animaciones que responden a lo que el usuario hace (marcar,
+   agregar, borrar) y nada de movimiento decorativo de fondo.
+   ========================================================================== */
+
+:root {
+  --ink: #1c1c1e;
+  --ink-suave: #6e6e73;
+  --acento: #0a84ff;
+  --peligro: #ff3b30;
+  --vidrio: rgba(255, 255, 255, 0.55);
+  --vidrio-fuerte: rgba(255, 255, 255, 0.78);
+  --borde-vidrio: rgba(255, 255, 255, 0.65);
+  --sombra: rgba(31, 38, 68, 0.16);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: linear-gradient(160deg, #eaf1fb 0%, #f4eefb 45%, #fdeef2 100%);
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Luces difusas de fondo: le dan al vidrio algo de color real que
+   desenfocar. Se mueven muy despacio, sin llamar la atención. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  width: 46vw;
+  height: 46vw;
+  border-radius: 50%;
+  filter: blur(70px);
+  z-index: -1;
+  opacity: 0.55;
+}
+
+body::before {
+  top: -12%;
+  left: -10%;
+  background: #a9c9ff;
+  animation: flotar-a 22s ease-in-out infinite;
+}
+
+body::after {
+  bottom: -14%;
+  right: -8%;
+  background: #ffc2d9;
+  animation: flotar-b 26s ease-in-out infinite;
+}
+
+@keyframes flotar-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(4%, 6%) scale(1.08); }
+}
+
+@keyframes flotar-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-5%, -4%) scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ==========================================================================
+   Tarjeta principal
+   ========================================================================== */
+
+.app {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px 26px 26px;
+  border-radius: 28px;
+  background: var(--vidrio);
+  border: 1px solid var(--borde-vidrio);
+  box-shadow:
+    0 20px 60px var(--sombra),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  animation: aparecer-app 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes aparecer-app {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 20px;
+}
+
+/* ==========================================================================
+   Formulario
+   ========================================================================== */
+
+.form-tarea {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+#input-tarea {
+  flex: 1;
+  min-width: 0;
+  padding: 13px 16px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--vidrio-fuerte);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  outline: none;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+
+#input-tarea::placeholder {
+  color: var(--ink-suave);
+}
+
+#input-tarea:focus {
+  background: #ffffff;
+  border-color: var(--acento);
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.16);
+}
+
+.form-tarea button {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: var(--acento);
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(10, 132, 255, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.form-tarea button:hover {
+  background: #2f95ff;
+}
+
+.form-tarea button:active {
+  transform: scale(0.88);
+  box-shadow: 0 4px 10px rgba(10, 132, 255, 0.3);
+}
+
+.form-tarea button .icono-mas {
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Lista de tareas
+   ========================================================================== */
+
+.lista-tareas {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tarea {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: 18px;
+  background: var(--vidrio-fuerte);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 3px 12px rgba(31, 38, 68, 0.06);
+  animation: entrada-tarea 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s ease,
+    max-height 0.28s ease,
+    padding 0.28s ease,
+    margin 0.28s ease,
+    box-shadow 0.2s ease;
+  max-height: 80px;
+  overflow: hidden;
+}
+
+@keyframes entrada-tarea {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.tarea.saliendo {
+  opacity: 0;
+  transform: translateX(28px) scale(0.96);
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+  border-width: 0;
+}
+
+/* Checkbox personalizado */
+.checkbox-tarea {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #c7c7cc;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.22s ease, border-color 0.22s ease, transform 0.15s ease;
+}
+
+.checkbox-tarea:hover {
+  border-color: var(--acento);
+}
+
+.checkbox-tarea:active {
+  transform: scale(0.85);
+}
+
+.checkbox-tarea:checked {
+  background-color: var(--acento);
+  border-color: var(--acento);
+}
+
+.checkbox-tarea:checked::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 6px;
+  height: 11px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Texto de la tarea con tachado animado (no el salto seco de
+   text-decoration: line-through, sino una línea que crece) */
+.texto-tarea {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  font-size: 15.5px;
+  color: var(--ink);
+  word-break: break-word;
+  transition: color 0.3s ease, opacity 0.3s ease;
+}
+
+.texto-tarea::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0%;
+  height: 1.5px;
+  background-color: currentColor;
+  transition: width 0.32s ease;
+}
+
+.tarea.completada .texto-tarea {
+  color: var(--ink-suave);
+  opacity: 0.7;
+}
+
+.tarea.completada .texto-tarea::after {
+  width: 100%;
+}
+
+.btn-eliminar {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--peligro);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.btn-eliminar:hover {
+  background-color: rgba(255, 59, 48, 0.1);
+}
+
+.btn-eliminar:active {
+  transform: scale(0.92);
+}
+
+/* Estado vacío */
+.lista-vacia {
+  display: none;
+  text-align: center;
+  color: var(--ink-suave);
+  font-size: 14px;
+  padding-top: 6px;
+}
+
+/* ==========================================================================
+   Accesibilidad
+   ========================================================================== */
+
+#input-tarea:focus-visible,
+.form-tarea button:focus-visible,
+.checkbox-tarea:focus-visible,
+.btn-eliminar:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  .app {
+    padding: 26px 20px 20px;
+    border-radius: 24px;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+}
