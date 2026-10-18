@@ -805,3 +805,172 @@ body.auth-activa .paisaje { opacity: 1; }
 @media (max-width: 480px) {
   .dividida .panel { padding: 20px 16px 16px; }
 }
+
+/* ==========================================================================
+   Correcciones visuales
+   ========================================================================== */
+
+/* El calendario vive dentro de una tarjeta con backdrop-filter (su propio
+   contexto de apilado): hay que subir esa tarjeta entera, no solo el calendario */
+.panel { position: relative; }
+.panel.con-calendario { z-index: 30; }
+
+/* El aviso "Deshacer" se centra con márgenes: antes usaba translateX(-50%),
+   pero la animación de entrada pisaba ese transform y lo corría a la derecha */
+.toast {
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  transform: none;
+}
+
+.paisaje { height: 40vh; min-height: 220px; }
+
+/* ==========================================================================
+   Editor de notas (se expande desde la tarjeta, como Apple Notes)
+   ========================================================================== */
+
+.nota { cursor: pointer; }
+.nota:hover { box-shadow: 0 8px 22px rgba(31, 38, 68, 0.12); }
+.nota:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.nota p {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+body.editor-abierto { overflow: hidden; }
+.toast { z-index: 60; }
+
+.editor-fondo {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(20, 24, 44, 0.38);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  animation: aparecer-fondo 0.3s ease both;
+}
+.editor-fondo.cerrando { animation: desvanecer 0.3s ease both; }
+@keyframes aparecer-fondo { from { opacity: 0; } to { opacity: 1; } }
+@keyframes desvanecer { to { opacity: 0; } }
+
+.editor {
+  width: 100%; max-width: 780px; height: min(86vh, 840px);
+  display: flex; flex-direction: column; padding: 16px 24px 20px;
+  border-radius: 28px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--borde-vidrio);
+  box-shadow: 0 30px 80px rgba(10, 14, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transform-origin: var(--ox, 50%) var(--oy, 50%);
+}
+:root[data-tema="oscuro"] .editor { background: rgba(38, 38, 46, 0.95); }
+
+.editor.abriendo { animation: expandir 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.editor.cerrando { animation: contraer 0.3s cubic-bezier(0.5, 0, 0.75, 0) both; }
+@keyframes expandir { from { opacity: 0; transform: scale(0.18); } to { opacity: 1; transform: scale(1); } }
+@keyframes contraer { to { opacity: 0; transform: scale(0.18); } }
+
+.editor-barra { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.editor-estado { font-size: 13px; color: var(--ink-suave); }
+.btn-chico { padding: 8px 18px; font-size: 14px; border-radius: 12px; }
+
+.editor-herramientas {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 8px 0;
+  border-top: 1px solid rgba(118, 118, 128, 0.2); border-bottom: 1px solid rgba(118, 118, 128, 0.2);
+}
+.herr {
+  min-width: 34px; height: 34px; padding: 0 10px; border: none; border-radius: 10px; background: transparent;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+.herr:hover { background: rgba(118, 118, 128, 0.16); }
+.herr:active { transform: scale(0.92); }
+.herr-peligro { color: var(--peligro); }
+.separador { width: 1px; height: 20px; margin: 0 4px; background: rgba(118, 118, 128, 0.3); }
+.grupo-tabla { display: flex; flex-wrap: wrap; gap: 3px; margin-left: 4px; padding-left: 8px; border-left: 1px solid rgba(118, 118, 128, 0.3); }
+
+.editor-titulo {
+  width: 100%; border: none; background: transparent; outline: none; font-family: inherit;
+  font-size: 28px; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); padding: 14px 2px 6px;
+}
+.editor-titulo::placeholder { color: var(--ink-suave); }
+
+.editor-cuerpo {
+  position: relative; flex: 1; overflow-y: auto; outline: none; padding: 4px 2px 20px;
+  font-size: 16.5px; line-height: 1.55; color: var(--ink); overflow-wrap: anywhere;
+}
+.editor-cuerpo.vacio::before {
+  content: attr(data-placeholder); position: absolute; left: 2px; top: 4px; color: var(--ink-suave); pointer-events: none;
+}
+.editor-cuerpo h1 { font-size: 24px; margin: 10px 0 4px; letter-spacing: -0.01em; }
+.editor-cuerpo h2 { font-size: 19px; margin: 8px 0 4px; }
+.editor-cuerpo ul, .editor-cuerpo ol { padding-left: 26px; margin: 4px 0; }
+.editor-cuerpo img { display: block; max-width: 100%; height: auto; margin: 10px 0; border-radius: 14px; }
+.editor-cuerpo table { width: 100%; margin: 12px 0; border-collapse: collapse; table-layout: fixed; }
+.editor-cuerpo td, .editor-cuerpo th {
+  min-width: 40px; padding: 8px 10px; vertical-align: top; border: 1px solid rgba(118, 118, 128, 0.4);
+}
+
+/* Lista de verificación */
+.editor-cuerpo ul.check { list-style: none; padding-left: 0; }
+.editor-cuerpo ul.check li { position: relative; min-height: 26px; padding-left: 34px; }
+.editor-cuerpo ul.check li::before {
+  content: ""; position: absolute; left: 3px; top: 4px; width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid #c7c7cc; cursor: pointer; transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.editor-cuerpo ul.check li.hecho { color: var(--ink-suave); text-decoration: line-through; }
+.editor-cuerpo ul.check li.hecho::before { background: var(--acento); border-color: var(--acento); }
+.editor-cuerpo ul.check li.hecho::after {
+  content: ""; position: absolute; left: 10px; top: 7px; width: 5px; height: 9px;
+  border: solid #ffffff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+.herr:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+@media (max-width: 600px) {
+  .editor-fondo { padding: 0; }
+  .editor { height: 100vh; height: 100dvh; max-width: none; border-radius: 0; padding: 14px 16px 16px; }
+  .editor-herramientas { flex-wrap: nowrap; overflow-x: auto; }
+  .herr { flex-shrink: 0; }
+  .editor-titulo { font-size: 24px; }
+}
+
+/* ==========================================================================
+   Imágenes: selección, tiradores y alineación
+   ========================================================================== */
+
+.editor-zona { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.editor-zona .editor-cuerpo { flex: 1; min-width: 0; padding: 4px 14px 20px; }
+.editor-cuerpo.vacio::before { left: 14px; }
+.editor-cuerpo img { cursor: pointer; }
+
+.editor-cuerpo img.img-izq { margin-left: 0; margin-right: auto; }
+.editor-cuerpo img.img-centro { margin-left: auto; margin-right: auto; }
+.editor-cuerpo img.img-der { margin-left: auto; margin-right: 0; }
+.editor-cuerpo img.flota-izq { float: left; margin: 4px 16px 10px 0; }
+.editor-cuerpo img.flota-der { float: right; margin: 4px 0 10px 16px; }
+
+.img-marco {
+  position: absolute; z-index: 5; pointer-events: none; /* el clic y el arrastre llegan a la imagen */
+  border: 2px solid var(--acento); border-radius: 14px;
+}
+.asa {
+  position: absolute; width: 14px; height: 14px; border-radius: 50%; pointer-events: auto; touch-action: none;
+  background: #ffffff; border: 2px solid var(--acento); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.asa::after { content: ""; position: absolute; inset: -10px; } /* zona de toque más grande */
+.asa-nw { top: -8px; left: -8px; cursor: nwse-resize; }
+.asa-ne { top: -8px; right: -8px; cursor: nesw-resize; }
+.asa-sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
+.asa-se { bottom: -8px; right: -8px; cursor: nwse-resize; }
+
+/* Arrastre de imágenes: copia flotante y línea guía */
+.editor-cuerpo img { cursor: grab; touch-action: none; user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
+body.arrastrando-imagen, body.arrastrando-imagen * { cursor: grabbing !important; user-select: none; }
+
+.img-fantasma {
+  position: fixed; z-index: 70; pointer-events: none; opacity: 0.85;
+  transform: translate(-50%, -50%) rotate(-2deg); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35); border-radius: 12px;
+}
+.img-fantasma img { display: block; width: 140px; max-width: none; height: auto; margin: 0; border-radius: 12px; }
+
+.guia-soltar {
+  position: fixed; z-index: 70; height: 3px; border-radius: 2px; pointer-events: none;
+  background: var(--acento); box-shadow: 0 0 10px rgba(10, 132, 255, 0.7);
+}

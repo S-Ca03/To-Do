@@ -64,6 +64,45 @@ function mostrarToast(mensaje, alDeshacer) {
   temporizadorToast = setTimeout(() => (toast.hidden = true), 5000);
 }
 
+// Convierte texto plano en el HTML que usa el editor (una línea = un bloque)
+function textoAHtml(texto = "") {
+  return texto
+    .split("\n")
+    .map((linea) => {
+      const div = document.createElement("div");
+      div.textContent = linea;
+      return `<div>${div.innerHTML || "<br>"}</div>`;
+    })
+    .join("");
+}
+
+// Deja solo las etiquetas y atributos que el editor puede producir. Se usa al
+// cargar e importar notas, para que un archivo ajeno no pueda colar código.
+const ETIQUETAS_OK = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "H1", "H2", "H3", "DIV", "P", "BR", "UL", "OL", "LI", "TABLE", "TBODY", "THEAD", "TR", "TD", "TH", "IMG"]);
+function limpiarHtml(html = "") {
+  const plantilla = document.createElement("template");
+  plantilla.innerHTML = html;
+  (function limpiar(nodo) {
+    [...nodo.children].forEach((hijo) => {
+      limpiar(hijo);
+      if (!ETIQUETAS_OK.has(hijo.tagName)) {
+        if (["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED"].includes(hijo.tagName)) hijo.remove();
+        else hijo.replaceWith(...hijo.childNodes); // conserva el texto, quita la etiqueta
+        return;
+      }
+      [...hijo.attributes].forEach((a) => {
+        const permitido =
+          (hijo.tagName === "IMG" && a.name === "src" && /^data:image\//i.test(a.value)) ||
+          (hijo.tagName === "IMG" && a.name === "width" && /^\d{2,4}$/.test(a.value)) ||
+          (a.name === "class" && /^(check|hecho|img-izq|img-centro|img-der|flota-izq|flota-der)( (check|hecho|img-izq|img-centro|img-der|flota-izq|flota-der))*$/.test(a.value));
+        if (!permitido) hijo.removeAttribute(a.name);
+      });
+      if (hijo.tagName === "IMG" && !hijo.getAttribute("src")) hijo.remove();
+    });
+  })(plantilla.content);
+  return plantilla.innerHTML;
+}
+
 const formatoFecha = (valor, opciones) => new Date(valor).toLocaleDateString("es-CO", opciones);
 
 /* ==========================================================================
@@ -338,6 +377,8 @@ function dibujarCalendario() {
 function abrirCalendario(abrir) {
   calendario.hidden = !abrir;
   btnFecha.setAttribute("aria-expanded", abrir);
+  // Sube su tarjeta por encima de la vecina para que el calendario no quede tapado
+  selectorFecha.closest(".panel").classList.toggle("con-calendario", abrir);
   if (abrir) {
     mesVista = inputFecha.value ? new Date(inputFecha.value + "T00:00") : new Date();
     mesVista.setDate(1);
@@ -389,12 +430,9 @@ const inputContenido = $("#input-contenido");
 const buscador = $("#buscador");
 const contenedorNotas = $("#contenedor-notas");
 const vaciaNotas = $("#vacia-notas");
-const btnGuardarNota = $("#btn-guardar-nota");
-const btnCancelar = $("#btn-cancelar");
 
 let notas = [];
 let siguienteIdNota = 1;
-let idEnEdicion = null;
 let idNotaNueva = null;
 
 const guardarNotas = () => localStorage.setItem(CLAVE_NOTAS, JSON.stringify(notas));
@@ -420,15 +458,18 @@ function renderizarNotas() {
     const div = document.createElement("div");
     div.classList.add("nota");
     div.dataset.id = nota.id;
+    div.tabIndex = 0;
+    div.setAttribute("role", "button");
+    div.setAttribute("aria-label", "Abrir nota: " + nota.titulo);
     if (nota.fijada) div.classList.add("fijada");
     if (nota.id === idNotaNueva) div.classList.add("nueva");
-    if (nota.id === idEnEdicion) div.classList.add("editando");
 
     const h3 = document.createElement("h3");
     h3.textContent = nota.titulo;
 
     const p = document.createElement("p");
-    p.textContent = nota.contenido;
+    p.textContent = nota.contenido || (nota.html.includes("<img") ? "Nota con imágenes" : "");
+    p.hidden = !p.textContent;
 
     const meta = document.createElement("span");
     meta.classList.add("meta-nota");
@@ -441,7 +482,6 @@ function renderizarNotas() {
     acciones.classList.add("acciones-nota");
     acciones.append(
       crearBoton("btn-fijar", nota.fijada ? "Quitar fijada" : "Fijar"),
-      crearBoton("btn-editar", "Editar"),
       crearBoton("btn-eliminar", "Eliminar")
     );
 
@@ -456,24 +496,6 @@ function renderizarNotas() {
     : "Aún no tienes notas. Escribe la primera arriba.";
 }
 
-function entrarEnEdicion(nota) {
-  idEnEdicion = nota.id;
-  inputTitulo.value = nota.titulo;
-  inputContenido.value = nota.contenido;
-  btnGuardarNota.textContent = "Actualizar nota";
-  btnCancelar.hidden = false;
-  renderizarNotas();
-  inputTitulo.focus();
-}
-
-function salirDeEdicion() {
-  idEnEdicion = null;
-  formNota.reset();
-  btnGuardarNota.textContent = "Guardar nota";
-  btnCancelar.hidden = true;
-  renderizarNotas();
-}
-
 formNota.addEventListener("submit", (event) => {
   event.preventDefault();
   const titulo = inputTitulo.value.trim();
@@ -484,16 +506,10 @@ formNota.addEventListener("submit", (event) => {
   if (contenido === "") return mostrarError(errorNota, "Escribe el contenido de la nota.");
   mostrarError(errorNota, "");
 
-  if (idEnEdicion === null) {
-    const nueva = { id: siguienteIdNota++, titulo, contenido, creada: Date.now(), fijada: false };
-    notas.push(nueva);
-    idNotaNueva = nueva.id;
-    formNota.reset();
-  } else {
-    notas = notas.map((n) => (n.id === idEnEdicion ? { ...n, titulo, contenido, editada: Date.now() } : n));
-    guardarNotas();
-    return salirDeEdicion();
-  }
+  const nueva = { id: siguienteIdNota++, titulo, contenido, html: textoAHtml(contenido), creada: Date.now(), fijada: false };
+  notas.push(nueva);
+  idNotaNueva = nueva.id;
+  formNota.reset();
   guardarNotas();
   renderizarNotas();
 });
@@ -501,26 +517,21 @@ formNota.addEventListener("submit", (event) => {
 [inputTitulo, inputContenido].forEach((campo) =>
   campo.addEventListener("input", () => mostrarError($("#error-nota"), ""))
 );
-btnCancelar.addEventListener("click", salirDeEdicion);
 buscador.addEventListener("input", renderizarNotas);
 
+// Clic en la nota = abrirla; los botones Fijar y Eliminar siguen funcionando aparte
 contenedorNotas.addEventListener("click", (event) => {
   const div = event.target.closest(".nota");
   if (!div) return;
   const id = Number(div.dataset.id);
-  const nota = notas.find((n) => n.id === id);
-
-  if (event.target.classList.contains("btn-editar")) entrarEnEdicion(nota);
 
   if (event.target.classList.contains("btn-fijar")) {
+    const nota = notas.find((n) => n.id === id);
     nota.fijada = !nota.fijada;
     guardarNotas();
     renderizarNotas();
-  }
-
-  if (event.target.classList.contains("btn-eliminar")) {
+  } else if (event.target.classList.contains("btn-eliminar")) {
     animarSalida(div, () => {
-      if (idEnEdicion === id) salirDeEdicion();
       const indice = notas.findIndex((n) => n.id === id);
       const [borrada] = notas.splice(indice, 1);
       guardarNotas();
@@ -531,7 +542,492 @@ contenedorNotas.addEventListener("click", (event) => {
         renderizarNotas();
       });
     });
+  } else {
+    abrirEditor(id, div);
   }
+});
+
+contenedorNotas.addEventListener("keydown", (event) => {
+  if ((event.key === "Enter" || event.key === " ") && event.target.classList.contains("nota")) {
+    event.preventDefault();
+    abrirEditor(Number(event.target.dataset.id), event.target);
+  }
+});
+
+/* ==========================================================================
+   Editor de notas (estilo Apple Notes)
+   La nota se expande desde su tarjeta. Formato con document.execCommand,
+   imágenes reducidas a data URL y guardado automático mientras escribes.
+   ========================================================================== */
+
+const editorFondo = $("#editor-fondo");
+const editor = $("#editor");
+const editorTitulo = $("#editor-titulo");
+const cuerpo = $("#editor-cuerpo");
+const editorEstado = $("#editor-estado");
+const herramientas = $(".editor-herramientas");
+const grupoTabla = $("#grupo-tabla");
+const archivoImagen = $("#editor-imagen");
+let notaAbierta = null;
+let temporizadorGuardado;
+let rangoGuardado = null;
+
+const textoPlano = () => (cuerpo.innerText ?? cuerpo.textContent).trim();
+
+function actualizarVacio() {
+  const vacio = !textoPlano() && !cuerpo.querySelector("img, table");
+  cuerpo.classList.toggle("vacio", vacio);
+}
+
+function fijarOrigen(tarjetaEl) {
+  const caja = editor.getBoundingClientRect();
+  const t = tarjetaEl.getBoundingClientRect();
+  editor.style.setProperty("--ox", `${t.left + t.width / 2 - caja.left}px`);
+  editor.style.setProperty("--oy", `${t.top + t.height / 2 - caja.top}px`);
+}
+
+function abrirEditor(id, tarjetaEl) {
+  notaAbierta = notas.find((n) => n.id === id);
+  if (!notaAbierta) return;
+  editorTitulo.value = notaAbierta.titulo;
+  cuerpo.innerHTML = notaAbierta.html;
+  deseleccionar();
+  try { document.execCommand("enableObjectResizing", false, false); } catch {} // Firefox trae sus propios tiradores
+  editorEstado.textContent = "";
+  actualizarVacio();
+  document.body.classList.add("editor-abierto");
+  editorFondo.classList.remove("cerrando");
+  editorFondo.hidden = false;
+  fijarOrigen(tarjetaEl);
+  editor.classList.remove("abriendo", "cerrando");
+  void editor.offsetWidth;
+  editor.classList.add("abriendo");
+  if (!cuerpo.textContent.trim()) cuerpo.focus();
+}
+
+function guardarEditor() {
+  if (!notaAbierta) return;
+  clearTimeout(temporizadorGuardado);
+  notaAbierta.titulo = editorTitulo.value.trim() || "Sin título";
+  notaAbierta.html = limpiarHtml(cuerpo.innerHTML);
+  notaAbierta.contenido = textoPlano();
+  notaAbierta.editada = Date.now();
+  try {
+    guardarNotas();
+    editorEstado.textContent = "Guardado";
+  } catch {
+    editorEstado.textContent = "";
+    mostrarToast("No hay espacio para guardar: prueba con imágenes más pequeñas");
+  }
+}
+
+function programarGuardado() {
+  editorEstado.textContent = "Guardando…";
+  clearTimeout(temporizadorGuardado);
+  temporizadorGuardado = setTimeout(guardarEditor, 500);
+  actualizarVacio();
+}
+
+function cerrarEditor() {
+  if (!notaAbierta) return;
+  guardarEditor();
+  deseleccionar();
+  const id = notaAbierta.id;
+  notaAbierta = null;
+  renderizarNotas(); // la tarjeta ya muestra los cambios y sirve de destino de la animación
+  const tarjetaEl = [...contenedorNotas.children].find((d) => Number(d.dataset.id) === id);
+  if (tarjetaEl) fijarOrigen(tarjetaEl);
+  editor.classList.remove("abriendo");
+  editor.classList.add("cerrando");
+  editorFondo.classList.add("cerrando");
+  setTimeout(() => {
+    editorFondo.hidden = true;
+    editor.classList.remove("cerrando");
+    document.body.classList.remove("editor-abierto");
+  }, 300);
+}
+
+/* ----- selección, tablas e imágenes ----- */
+
+function restaurarRango() {
+  if (!rangoGuardado) return;
+  cuerpo.focus();
+  const seleccion = getSelection();
+  seleccion.removeAllRanges();
+  seleccion.addRange(rangoGuardado);
+}
+
+function celdaActual() {
+  const nodo = getSelection().anchorNode;
+  if (!nodo || !cuerpo.contains(nodo)) return null;
+  return (nodo.nodeType === 1 ? nodo : nodo.parentElement).closest("td, th");
+}
+
+function ponerCursor(elemento) {
+  const rango = document.createRange();
+  rango.selectNodeContents(elemento);
+  rango.collapse(true);
+  const seleccion = getSelection();
+  seleccion.removeAllRanges();
+  seleccion.addRange(rango);
+}
+
+function insertarTabla() {
+  const fila = "<tr>" + "<td><br></td>".repeat(3) + "</tr>";
+  document.execCommand("insertHTML", false, `<table><tbody>${fila.repeat(3)}</tbody></table><div><br></div>`);
+}
+
+function agregarFila() {
+  const celda = celdaActual();
+  if (!celda) return;
+  const nueva = celda.parentElement.cloneNode(true);
+  nueva.querySelectorAll("td, th").forEach((c) => (c.innerHTML = "<br>"));
+  celda.parentElement.after(nueva);
+}
+
+function agregarColumna() {
+  const celda = celdaActual();
+  if (!celda) return;
+  const indice = celda.cellIndex;
+  [...celda.closest("table").rows].forEach((fila) => {
+    const nueva = document.createElement("td");
+    nueva.innerHTML = "<br>";
+    fila.cells[indice].after(nueva);
+  });
+}
+
+function quitarTabla() {
+  celdaActual()?.closest("table").remove();
+}
+
+function reducirImagen(archivo, maximo = 1100) {
+  return new Promise((resolver, rechazar) => {
+    const url = URL.createObjectURL(archivo);
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, maximo / Math.max(img.width, img.height));
+      const lienzo = document.createElement("canvas");
+      lienzo.width = Math.round(img.width * escala);
+      lienzo.height = Math.round(img.height * escala);
+      const ctx = lienzo.getContext("2d");
+      ctx.fillStyle = "#ffffff"; // los PNG transparentes no quedan negros al pasar a JPEG
+      ctx.fillRect(0, 0, lienzo.width, lienzo.height);
+      ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+      URL.revokeObjectURL(url);
+      resolver(lienzo.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = rechazar;
+    img.src = url;
+  });
+}
+
+async function insertarImagen(archivo) {
+  try {
+    const url = await reducirImagen(archivo);
+    restaurarRango();
+    document.execCommand("insertImage", false, url);
+    programarGuardado();
+  } catch {
+    mostrarToast("No se pudo insertar la imagen");
+  }
+}
+
+/* ----- imágenes: seleccionar, redimensionar, alinear y mover ----- */
+
+const zona = $(".editor-zona");
+const marco = $("#img-marco");
+const grupoImagen = $("#grupo-imagen");
+const CLASES_IMAGEN = ["img-izq", "img-centro", "img-der", "flota-izq", "flota-der"];
+let imagenSel = null;
+
+function deseleccionar() {
+  imagenSel = null;
+  marco.hidden = true;
+  grupoImagen.hidden = true;
+}
+
+// El marco es un elemento aparte (no forma parte del contenido guardado)
+// que se dibuja encima de la imagen seleccionada.
+function ubicarMarco() {
+  if (!imagenSel || !cuerpo.contains(imagenSel)) return deseleccionar();
+  const z = zona.getBoundingClientRect();
+  const r = imagenSel.getBoundingClientRect();
+  Object.assign(marco.style, {
+    left: `${r.left - z.left}px`, top: `${r.top - z.top}px`, width: `${r.width}px`, height: `${r.height}px`,
+  });
+  marco.hidden = false;
+  grupoImagen.hidden = false;
+}
+
+function alinearImagen(clase) {
+  if (!imagenSel) return;
+  imagenSel.classList.remove(...CLASES_IMAGEN);
+  imagenSel.classList.add(clase);
+  ubicarMarco();
+}
+
+// Sube o baja la imagen un bloque (alternativa al arrastre, útil en el celular)
+function moverImagen(direccion) {
+  if (!imagenSel || imagenSel.closest("td, th")) return;
+  let bloque = imagenSel;
+  while (bloque.parentElement !== cuerpo) bloque = bloque.parentElement;
+  const compartido = bloque === imagenSel || bloque.textContent.trim() || bloque.querySelectorAll("img").length > 1;
+  if (compartido) {
+    const aparte = document.createElement("div"); // la imagen se aparta en su propio bloque
+    bloque.before(aparte);
+    aparte.append(imagenSel);
+    bloque = aparte;
+  }
+  const vecino = direccion < 0 ? bloque.previousElementSibling : bloque.nextElementSibling;
+  if (vecino) direccion < 0 ? vecino.before(bloque) : vecino.after(bloque);
+  imagenSel.scrollIntoView?.({ block: "nearest" });
+  ubicarMarco();
+}
+
+function quitarImagen() {
+  imagenSel?.remove();
+  deseleccionar();
+}
+
+let acabaDeArrastrar = false;
+
+cuerpo.addEventListener("click", (event) => {
+  if (acabaDeArrastrar) return;
+  if (event.target.tagName === "IMG") {
+    imagenSel = event.target;
+    ubicarMarco();
+  } else {
+    deseleccionar();
+  }
+});
+
+// Tiradores de las esquinas: cambian el ancho y el alto se ajusta solo (proporcional)
+marco.addEventListener("pointerdown", (event) => {
+  const asa = event.target.closest(".asa");
+  if (!asa || !imagenSel) return;
+  event.preventDefault();
+  asa.setPointerCapture?.(event.pointerId);
+
+  const inicioX = event.clientX;
+  const anchoInicial = imagenSel.getBoundingClientRect().width;
+  const haciaOeste = asa.dataset.esq.includes("w");
+  const factor = imagenSel.classList.contains("img-centro") ? 2 : 1; // centrada: crece por ambos lados
+  const maximo = cuerpo.clientWidth - 24;
+
+  const mover = (e) => {
+    const dx = (e.clientX - inicioX) * factor * (haciaOeste ? -1 : 1);
+    imagenSel.setAttribute("width", Math.round(Math.max(40, Math.min(maximo, anchoInicial + dx))));
+    imagenSel.removeAttribute("height");
+    ubicarMarco();
+  };
+  const soltar = () => {
+    asa.removeEventListener("pointermove", mover);
+    asa.removeEventListener("pointerup", soltar);
+    asa.removeEventListener("pointercancel", soltar);
+    programarGuardado();
+  };
+  asa.addEventListener("pointermove", mover);
+  asa.addEventListener("pointerup", soltar);
+  asa.addEventListener("pointercancel", soltar);
+});
+
+// Mover arrastrando: arrastre propio (el nativo cambia según el navegador y falla en el
+// celular). Mientras arrastras se ve una copia flotante y una línea azul que marca el
+// punto de la nota donde caerá la imagen: entre dos bloques (párrafos, listas, tablas).
+cuerpo.addEventListener("dragstart", (event) => {
+  if (event.target.tagName === "IMG") event.preventDefault();
+});
+
+// Bloque (hijo directo del editor) más cercano a la altura y, sin contar el de la propia imagen
+function bloqueDestino(y, imagen) {
+  const bloques = [...cuerpo.children].filter(
+    (b) => b !== imagen && !(b.contains(imagen) && !b.textContent.trim() && b.querySelectorAll("img").length === 1)
+  );
+  let mejor = null;
+  let distanciaMejor = Infinity;
+  bloques.forEach((bloque) => {
+    const r = bloque.getBoundingClientRect();
+    const distancia = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    if (distancia < distanciaMejor) {
+      distanciaMejor = distancia;
+      mejor = { bloque, despues: y > r.top + r.height / 2, rect: r };
+    }
+  });
+  return mejor;
+}
+
+function soltarImagen(imagen, destino) {
+  const origen = imagen.parentElement;
+  const aparte = document.createElement("div");
+  aparte.append(imagen);
+  destino.bloque[destino.despues ? "after" : "before"](aparte);
+  // Si el bloque de origen se quedó vacío, se retira
+  if (origen.parentElement === cuerpo && origen.tagName === "DIV" && !origen.textContent.trim() && !origen.querySelector("img, table")) {
+    origen.remove();
+  }
+}
+
+cuerpo.addEventListener("pointerdown", (event) => {
+  const imagen = event.target;
+  if (imagen.tagName !== "IMG" || event.button !== 0) return;
+
+  const inicio = { x: event.clientX, y: event.clientY };
+  let arrastrando = false;
+  let destino = null;
+  let fantasma;
+  let guia;
+
+  const mover = (e) => {
+    if (!arrastrando) {
+      if (Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6) return; // aún es un clic
+      arrastrando = true;
+      marco.hidden = true;
+      document.body.classList.add("arrastrando-imagen");
+      fantasma = document.createElement("div");
+      fantasma.className = "img-fantasma";
+      fantasma.append(imagen.cloneNode());
+      guia = document.createElement("div");
+      guia.className = "guia-soltar";
+      document.body.append(fantasma, guia);
+    }
+
+    fantasma.style.left = `${e.clientX}px`;
+    fantasma.style.top = `${e.clientY}px`;
+
+    // Desplazamiento automático al acercarse al borde del editor
+    const zonaRect = cuerpo.getBoundingClientRect();
+    if (e.clientY < zonaRect.top + 40) cuerpo.scrollTop -= 14;
+    if (e.clientY > zonaRect.bottom - 40) cuerpo.scrollTop += 14;
+
+    destino = bloqueDestino(e.clientY, imagen);
+    guia.hidden = !destino;
+    if (destino) {
+      const r = destino.rect;
+      guia.style.left = `${zonaRect.left + 14}px`;
+      guia.style.width = `${cuerpo.clientWidth - 28}px`;
+      guia.style.top = `${(destino.despues ? r.bottom : r.top) - 1.5}px`;
+    }
+  };
+
+  const soltar = () => {
+    document.removeEventListener("pointermove", mover);
+    document.removeEventListener("pointerup", soltar);
+    document.removeEventListener("pointercancel", soltar);
+    if (!arrastrando) return;
+
+    fantasma.remove();
+    guia.remove();
+    document.body.classList.remove("arrastrando-imagen");
+    acabaDeArrastrar = true; // evita que el clic posterior cambie la selección
+    setTimeout(() => (acabaDeArrastrar = false), 0);
+
+    if (destino) {
+      soltarImagen(imagen, destino);
+      programarGuardado();
+    }
+    imagenSel = imagen;
+    ubicarMarco();
+  };
+
+  document.addEventListener("pointermove", mover);
+  document.addEventListener("pointerup", soltar);
+  document.addEventListener("pointercancel", soltar);
+});
+cuerpo.addEventListener("scroll", ubicarMarco);
+window.addEventListener("resize", ubicarMarco);
+
+/* ----- eventos ----- */
+
+// mousedown sin quitar el foco, para no perder la selección al pulsar un botón
+herramientas.addEventListener("mousedown", (event) => {
+  if (event.target.closest("button")) event.preventDefault();
+});
+
+herramientas.addEventListener("click", (event) => {
+  const boton = event.target.closest("button");
+  if (!boton) return;
+  const { cmd, bloque, accion } = boton.dataset;
+  restaurarRango();
+
+  if (cmd) document.execCommand(cmd);
+  else if (bloque) document.execCommand("formatBlock", false, bloque);
+  else if (accion === "check") {
+    document.execCommand("insertUnorderedList");
+    getSelection().anchorNode?.parentElement?.closest("ul")?.classList.toggle("check");
+  } else if (accion === "tabla") insertarTabla();
+  else if (accion === "imagen") archivoImagen.click();
+  else if (accion === "fila") agregarFila();
+  else if (accion === "columna") agregarColumna();
+  else if (accion === "quitar-tabla") quitarTabla();
+  else if (accion === "alinear") alinearImagen(boton.dataset.alin);
+  else if (accion === "subir") moverImagen(-1);
+  else if (accion === "bajar") moverImagen(1);
+  else if (accion === "quitar-imagen") quitarImagen();
+
+  programarGuardado();
+  grupoTabla.hidden = !celdaActual();
+  ubicarMarco();
+});
+
+archivoImagen.addEventListener("change", () => {
+  const archivo = archivoImagen.files[0];
+  archivoImagen.value = "";
+  if (archivo) insertarImagen(archivo);
+});
+
+cuerpo.addEventListener("input", () => {
+  programarGuardado();
+  ubicarMarco();
+});
+editorTitulo.addEventListener("input", programarGuardado);
+
+// Pegar: una imagen se inserta reducida; cualquier otra cosa entra como texto limpio
+cuerpo.addEventListener("paste", (event) => {
+  event.preventDefault();
+  const imagen = [...event.clipboardData.files].find((f) => f.type.startsWith("image/"));
+  if (imagen) insertarImagen(imagen);
+  else document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+});
+
+// Tab salta de celda en celda (y crea una fila nueva al final de la tabla)
+cuerpo.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const celda = celdaActual();
+  if (!celda) return;
+  event.preventDefault();
+  const tabla = celda.closest("table");
+  let celdas = [...tabla.querySelectorAll("td, th")];
+  const destino = celdas.indexOf(celda) + (event.shiftKey ? -1 : 1);
+  if (destino >= celdas.length) {
+    agregarFila();
+    celdas = [...tabla.querySelectorAll("td, th")];
+  }
+  if (celdas[destino]) ponerCursor(celdas[destino]);
+});
+
+// Casillas de la lista de verificación: clic en el círculo de la izquierda
+cuerpo.addEventListener("click", (event) => {
+  const item = event.target;
+  if (item.tagName === "LI" && item.parentElement.classList.contains("check") && event.offsetX < 30) {
+    item.classList.toggle("hecho");
+    programarGuardado();
+  }
+});
+
+document.addEventListener("selectionchange", () => {
+  const seleccion = getSelection();
+  if (!seleccion.rangeCount || !cuerpo.contains(seleccion.anchorNode)) return;
+  rangoGuardado = seleccion.getRangeAt(0).cloneRange();
+  grupoTabla.hidden = !celdaActual();
+});
+
+$("#editor-cerrar").addEventListener("click", cerrarEditor);
+$("#editor-hecho").addEventListener("click", cerrarEditor);
+editorFondo.addEventListener("click", (event) => {
+  if (event.target === editorFondo) cerrarEditor();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !editorFondo.hidden) cerrarEditor();
 });
 
 /* ==========================================================================
@@ -560,12 +1056,12 @@ $("#archivo-importar").addEventListener("change", async (event) => {
     if (!confirm("Importar reemplazará tus tareas y notas actuales. ¿Continuar?")) return;
 
     tareas = datos.tareas;
-    notas = datos.notas;
+    notas = datos.notas.map((n) => ({ ...n, html: limpiarHtml(n.html ?? textoAHtml(n.contenido ?? "")) }));
     siguienteIdTarea = calcularSiguienteId(tareas);
     siguienteIdNota = calcularSiguienteId(notas);
     guardarTareas();
     guardarNotas();
-    salirDeEdicion();
+    renderizarNotas();
     renderizarTareas();
     mostrarToast("Copia importada");
   } catch {
@@ -703,16 +1199,14 @@ function cargarDatos(email) {
   notas.forEach((n) => {
     n.creada ??= Date.now();
     n.fijada ??= false;
+    n.html = limpiarHtml(n.html ?? textoAHtml(n.contenido ?? ""));
   });
   siguienteIdNota = calcularSiguienteId(notas);
 
   filtro = "todas";
   document.querySelectorAll(".filtro").forEach((b) => b.setAttribute("aria-pressed", b.dataset.filtro === "todas"));
   buscador.value = "";
-  idEnEdicion = null;
   formNota.reset();
-  btnGuardarNota.textContent = "Guardar nota";
-  btnCancelar.hidden = true;
 
   guardarTareas();
   guardarNotas();

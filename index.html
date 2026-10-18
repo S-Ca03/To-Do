@@ -95,7 +95,6 @@
         <input type="text" id="input-titulo" class="campo" placeholder="Título de la nota" autocomplete="off">
         <textarea id="input-contenido" class="campo" placeholder="Escribe tu nota..." rows="3"></textarea>
         <div class="acciones-form">
-          <button type="button" id="btn-cancelar" class="btn-texto" hidden>Cancelar</button>
           <button type="submit" id="btn-guardar-nota" class="btn-primario">Guardar nota</button>
         </div>
       </form>
@@ -116,9 +115,61 @@
     </div>
   </main>
 
+  <!-- ===================== EDITOR DE NOTAS ===================== -->
+  <div id="editor-fondo" class="editor-fondo" hidden>
+    <section id="editor" class="editor" role="dialog" aria-modal="true" aria-label="Editor de nota">
+      <header class="editor-barra">
+        <button type="button" id="editor-cerrar" class="btn-texto">‹ Notas</button>
+        <span id="editor-estado" class="editor-estado" aria-live="polite"></span>
+        <button type="button" id="editor-hecho" class="btn-primario btn-chico">Listo</button>
+      </header>
+      <div class="editor-herramientas" role="toolbar" aria-label="Formato">
+        <button type="button" class="herr" data-bloque="H1">Título</button>
+        <button type="button" class="herr" data-bloque="H2">Subtítulo</button>
+        <button type="button" class="herr" data-bloque="DIV">Texto</button>
+        <span class="separador"></span>
+        <button type="button" class="herr" data-cmd="bold" aria-label="Negrita"><b>B</b></button>
+        <button type="button" class="herr" data-cmd="italic" aria-label="Cursiva"><i>I</i></button>
+        <button type="button" class="herr" data-cmd="underline" aria-label="Subrayado"><u>U</u></button>
+        <button type="button" class="herr" data-cmd="strikeThrough" aria-label="Tachado"><s>S</s></button>
+        <span class="separador"></span>
+        <button type="button" class="herr" data-cmd="insertUnorderedList">Lista</button>
+        <button type="button" class="herr" data-cmd="insertOrderedList">1. 2.</button>
+        <button type="button" class="herr" data-accion="check">Casillas</button>
+        <span class="separador"></span>
+        <button type="button" class="herr" data-accion="tabla">Tabla</button>
+        <button type="button" class="herr" data-accion="imagen">Imagen</button>
+        <span id="grupo-tabla" class="grupo-tabla" hidden>
+          <button type="button" class="herr" data-accion="fila">+ Fila</button>
+          <button type="button" class="herr" data-accion="columna">+ Columna</button>
+          <button type="button" class="herr herr-peligro" data-accion="quitar-tabla">Quitar tabla</button>
+        </span>
+        <span id="grupo-imagen" class="grupo-tabla" hidden>
+          <button type="button" class="herr" data-accion="alinear" data-alin="img-izq">Izquierda</button>
+          <button type="button" class="herr" data-accion="alinear" data-alin="img-centro">Centro</button>
+          <button type="button" class="herr" data-accion="alinear" data-alin="img-der">Derecha</button>
+          <button type="button" class="herr" data-accion="alinear" data-alin="flota-izq">Texto a la derecha</button>
+          <button type="button" class="herr" data-accion="alinear" data-alin="flota-der">Texto a la izquierda</button>
+          <button type="button" class="herr" data-accion="subir">Subir</button>
+          <button type="button" class="herr" data-accion="bajar">Bajar</button>
+          <button type="button" class="herr herr-peligro" data-accion="quitar-imagen">Quitar imagen</button>
+        </span>
+      </div>
+      <input type="text" id="editor-titulo" class="editor-titulo" placeholder="Título" autocomplete="off" aria-label="Título de la nota">
+      <div class="editor-zona">
+        <div id="editor-cuerpo" class="editor-cuerpo vacio" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenido de la nota" data-placeholder="Empieza a escribir..."></div>
+        <div id="img-marco" class="img-marco" hidden>
+          <span class="asa asa-nw" data-esq="nw"></span><span class="asa asa-ne" data-esq="ne"></span>
+          <span class="asa asa-sw" data-esq="sw"></span><span class="asa asa-se" data-esq="se"></span>
+        </div>
+      </div>
+      <input type="file" id="editor-imagen" accept="image/*" hidden>
+    </section>
+  </div>
+
   <div id="toast" class="toast" role="status" hidden></div>
 
-  <svg class="paisaje" viewBox="0 0 1440 320" preserveAspectRatio="none" aria-hidden="true"><path class="m1" d="M0 320V190l180-90 160 80 210-130 230 150 200-110 260 120v110z"/><path class="m2" d="M0 320V250l240-70 220 60 260-90 250 80 270-50v140z"/></svg>
+  <svg class="paisaje" viewBox="0 0 1440 320" preserveAspectRatio="none" aria-hidden="true"><path class="m1" d="M0 320V190L180 100L340 180L550 50L780 200L980 90L1240 210L1440 120V320Z"/><path class="m2" d="M0 320V250L240 180L460 240L720 150L970 230L1240 180L1440 235V320Z"/></svg>
 
   <script src="app.js" defer></script>
 </body>
