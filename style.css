@@ -1,9 +1,9 @@
 /* ==========================================================================
-   Mi Lista de Tareas — estilo iOS / "liquid glass"
-   Fondo con luz difusa en movimiento + una tarjeta de vidrio esmerilado
-   como único protagonista. Tipografía del sistema, un solo acento (azul
-   iOS), animaciones que responden a lo que el usuario hace (marcar,
-   agregar, borrar) y nada de movimiento decorativo de fondo.
+   Tareas y notas — estilo iOS / "liquid glass"
+   Una sola tarjeta de vidrio esmerilado sobre luces difusas, con un control
+   segmentado (como el de iOS) para cambiar entre Tareas y Notas. El
+   movimiento solo responde a acciones del usuario: cambiar de pestaña,
+   agregar, marcar y borrar.
    ========================================================================== */
 
 :root {
@@ -23,6 +23,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   min-height: 100vh;
   display: flex;
@@ -36,8 +40,7 @@ body {
   position: relative;
 }
 
-/* Luces difusas de fondo: le dan al vidrio algo de color real que
-   desenfocar. Se mueven muy despacio, sin llamar la atención. */
+/* Luces difusas de fondo: le dan al vidrio color real que desenfocar */
 body::before,
 body::after {
   content: "";
@@ -87,7 +90,7 @@ body::after {
 
 .app {
   width: 100%;
-  max-width: 420px;
+  max-width: 460px;
   padding: 32px 26px 26px;
   border-radius: 28px;
   background: var(--vidrio);
@@ -109,21 +112,73 @@ h1 {
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 /* ==========================================================================
-   Formulario
+   Control segmentado (pestañas)
    ========================================================================== */
 
-.form-tarea {
-  display: flex;
-  gap: 10px;
+.segmentado {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
   margin-bottom: 22px;
+  border-radius: 14px;
+  background: rgba(118, 118, 128, 0.14);
 }
 
-#input-tarea {
-  flex: 1;
+.segmentado .thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 11px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(31, 38, 68, 0.12);
+  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.segmentado[data-activa="notas"] .thumb {
+  transform: translateX(100%);
+}
+
+.pestana {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  padding: 9px 0;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-suave);
+  cursor: pointer;
+  transition: color 0.25s ease;
+}
+
+.pestana[aria-selected="true"] {
+  color: var(--ink);
+}
+
+/* El panel se desvanece al aparecer al cambiar de pestaña */
+.panel:not([hidden]) {
+  animation: cambiar-panel 0.3s ease both;
+}
+
+@keyframes cambiar-panel {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   Campos y botones
+   ========================================================================== */
+
+.campo {
+  width: 100%;
   min-width: 0;
   padding: 13px 16px;
   font-size: 16px;
@@ -136,17 +191,23 @@ h1 {
   transition: box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
 }
 
-#input-tarea::placeholder {
+textarea.campo {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.45;
+}
+
+.campo::placeholder {
   color: var(--ink-suave);
 }
 
-#input-tarea:focus {
+.campo:focus {
   background: #ffffff;
   border-color: var(--acento);
   box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.16);
 }
 
-.form-tarea button {
+.btn-redondo {
   flex-shrink: 0;
   width: 48px;
   height: 48px;
@@ -164,67 +225,142 @@ h1 {
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.form-tarea button:hover {
+.btn-redondo:hover {
   background: #2f95ff;
 }
 
-.form-tarea button:active {
+.btn-redondo:active {
   transform: scale(0.88);
   box-shadow: 0 4px 10px rgba(10, 132, 255, 0.3);
 }
 
-.form-tarea button .icono-mas {
+.icono-mas {
   transform: translateY(-1px);
 }
 
+.btn-primario {
+  border: none;
+  border-radius: 14px;
+  padding: 12px 22px;
+  background: var(--acento);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(10, 132, 255, 0.3);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.btn-primario:hover {
+  background: #2f95ff;
+}
+
+.btn-primario:active {
+  transform: scale(0.95);
+}
+
+.btn-texto {
+  border: none;
+  background: transparent;
+  color: var(--ink-suave);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.btn-texto:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.btn-texto:active {
+  transform: scale(0.94);
+}
+
 /* ==========================================================================
-   Lista de tareas
+   Formularios
    ========================================================================== */
 
-.lista-tareas {
-  list-style: none;
+.form-tarea {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.form-nota {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-bottom: 22px;
 }
 
-.tarea {
+.acciones-form {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 14px;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* ==========================================================================
+   Listas (tareas y notas comparten el mismo lenguaje de tarjeta de vidrio)
+   ========================================================================== */
+
+.tarea,
+.nota {
+  margin-bottom: 10px;
   border-radius: 18px;
   background: var(--vidrio-fuerte);
   border: 1px solid rgba(255, 255, 255, 0.5);
   box-shadow: 0 3px 12px rgba(31, 38, 68, 0.06);
-  animation: entrada-tarea 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   transition:
     opacity 0.28s ease,
     transform 0.28s ease,
     max-height 0.28s ease,
     padding 0.28s ease,
-    margin 0.28s ease,
-    box-shadow 0.2s ease;
-  max-height: 80px;
-  overflow: hidden;
+    margin 0.28s ease;
 }
 
-@keyframes entrada-tarea {
+.lista > :last-child {
+  margin-bottom: 0;
+}
+
+/* Solo lo recién agregado se anima al aparecer */
+.tarea.nueva,
+.nota.nueva {
+  animation: entrada 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes entrada {
   from { opacity: 0; transform: translateY(10px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.tarea.saliendo {
+/* El JS fija max-height con la altura real antes de añadir esta clase,
+   para que el colapso sea suave sin importar cuánto texto tenga */
+.tarea.saliendo,
+.nota.saliendo {
   opacity: 0;
   transform: translateX(28px) scale(0.96);
-  max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
-  margin: 0;
+  margin-bottom: 0;
   border-width: 0;
+  overflow: hidden;
 }
 
-/* Checkbox personalizado */
+/* ---------- Tareas ---------- */
+
+.tarea {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+}
+
 .checkbox-tarea {
   appearance: none;
   -webkit-appearance: none;
@@ -263,15 +399,14 @@ h1 {
   transform: rotate(45deg);
 }
 
-/* Texto de la tarea con tachado animado (no el salto seco de
-   text-decoration: line-through, sino una línea que crece) */
+/* Tachado animado: una línea que crece en vez del salto seco de line-through */
 .texto-tarea {
   flex: 1;
   min-width: 0;
   position: relative;
   font-size: 15.5px;
   color: var(--ink);
-  word-break: break-word;
+  overflow-wrap: anywhere;
   transition: color 0.3s ease, opacity 0.3s ease;
 }
 
@@ -295,11 +430,40 @@ h1 {
   width: 100%;
 }
 
+/* ---------- Notas ---------- */
+
+.nota {
+  padding: 16px 16px 10px;
+}
+
+.nota h3 {
+  font-size: 16.5px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.nota p {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-suave);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.acciones-nota {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.btn-editar,
 .btn-eliminar {
-  flex-shrink: 0;
   border: none;
   background: transparent;
-  color: var(--peligro);
+  font-family: inherit;
   font-size: 13.5px;
   font-weight: 600;
   padding: 8px 10px;
@@ -308,17 +472,36 @@ h1 {
   transition: background-color 0.2s ease, transform 0.15s ease;
 }
 
+.btn-editar {
+  color: var(--acento);
+}
+
+.btn-editar:hover {
+  background-color: rgba(10, 132, 255, 0.1);
+}
+
+.btn-eliminar {
+  color: var(--peligro);
+}
+
 .btn-eliminar:hover {
   background-color: rgba(255, 59, 48, 0.1);
 }
 
+.btn-editar:active,
 .btn-eliminar:active {
   transform: scale(0.92);
 }
 
-/* Estado vacío */
+/* La nota que se está editando queda resaltada */
+.nota.editando {
+  border-color: rgba(10, 132, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.14), 0 3px 12px rgba(31, 38, 68, 0.06);
+}
+
+/* ---------- Estado vacío ---------- */
+
 .lista-vacia {
-  display: none;
   text-align: center;
   color: var(--ink-suave);
   font-size: 14px;
@@ -329,9 +512,13 @@ h1 {
    Accesibilidad
    ========================================================================== */
 
-#input-tarea:focus-visible,
-.form-tarea button:focus-visible,
+.campo:focus-visible,
+.btn-redondo:focus-visible,
+.btn-primario:focus-visible,
+.btn-texto:focus-visible,
+.pestana:focus-visible,
 .checkbox-tarea:focus-visible,
+.btn-editar:focus-visible,
 .btn-eliminar:focus-visible {
   outline: 2px solid var(--acento);
   outline-offset: 2px;
@@ -343,7 +530,7 @@ h1 {
 
 @media (max-width: 480px) {
   .app {
-    padding: 26px 20px 20px;
+    padding: 26px 18px 20px;
     border-radius: 24px;
   }
 

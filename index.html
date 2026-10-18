@@ -3,26 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mi Lista de Tareas</title>
+  <title>Tareas y notas</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <main class="app">
-    <h1>Mi Lista de Tareas</h1>
+    <h1>Tareas y notas</h1>
 
-    <form id="form-tarea" class="form-tarea">
-      <input type="text" id="input-tarea" placeholder="Escribe una tarea..." autocomplete="off">
-      <button type="submit" aria-label="Agregar tarea">
-        <span class="icono-mas" aria-hidden="true">+</span>
-      </button>
-    </form>
+    <div class="segmentado" role="tablist" aria-label="Secciones" data-activa="tareas">
+      <span class="thumb" aria-hidden="true"></span>
+      <button type="button" role="tab" class="pestana" id="pestana-tareas" data-pestana="tareas" aria-controls="panel-tareas" aria-selected="true">Tareas</button>
+      <button type="button" role="tab" class="pestana" id="pestana-notas" data-pestana="notas" aria-controls="panel-notas" aria-selected="false" tabindex="-1">Notas</button>
+    </div>
 
-    <ul id="lista-tareas" class="lista-tareas"></ul>
+    <!-- ===================== TAREAS ===================== -->
+    <section class="panel" id="panel-tareas" role="tabpanel" aria-labelledby="pestana-tareas">
+      <form id="form-tarea" class="form-tarea">
+        <input type="text" id="input-tarea" class="campo" placeholder="Escribe una tarea..." autocomplete="off">
+        <button type="submit" class="btn-redondo" aria-label="Agregar tarea">
+          <span class="icono-mas" aria-hidden="true">+</span>
+        </button>
+      </form>
 
-    <p id="lista-vacia" class="lista-vacia">No tienes tareas pendientes.</p>
+      <ul id="lista-tareas" class="lista"></ul>
+      <p id="vacia-tareas" class="lista-vacia">No tienes tareas pendientes.</p>
+    </section>
+
+    <!-- ===================== NOTAS ===================== -->
+    <section class="panel" id="panel-notas" role="tabpanel" aria-labelledby="pestana-notas" hidden>
+      <form id="form-nota" class="form-nota">
+        <input type="text" id="input-titulo" class="campo" placeholder="Título de la nota" autocomplete="off">
+        <textarea id="input-contenido" class="campo" placeholder="Escribe tu nota..." rows="3"></textarea>
+        <div class="acciones-form">
+          <button type="button" id="btn-cancelar" class="btn-texto" hidden>Cancelar</button>
+          <button type="submit" id="btn-guardar-nota" class="btn-primario">Guardar nota</button>
+        </div>
+      </form>
+
+      <div id="contenedor-notas" class="lista"></div>
+      <p id="vacia-notas" class="lista-vacia">Aún no tienes notas. Escribe la primera arriba.</p>
+    </section>
   </main>
 
-  <script src="04-app.js" defer></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
