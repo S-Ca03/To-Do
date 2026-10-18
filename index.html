@@ -4,12 +4,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tareas y notas</title>
+  <script>
+    /* Aplica el tema antes de pintar para evitar un destello */
+    document.documentElement.dataset.tema = localStorage.getItem("tema") ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro");
+  </script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <main class="app">
-    <h1>Tareas y notas</h1>
+  <!-- ===================== LOGIN / REGISTRO ===================== -->
+  <section id="vista-auth" class="app auth-card" aria-labelledby="auth-titulo" hidden>
+    <h1 id="auth-titulo">Iniciar sesión</h1>
+    <form id="form-auth" class="form-auth" novalidate>
+      <input type="text" id="auth-nombre" class="campo" placeholder="Nombre" autocomplete="name" hidden>
+      <input type="email" id="auth-email" class="campo" placeholder="Correo electrónico" autocomplete="email">
+      <input type="password" id="auth-clave" class="campo" placeholder="Contraseña" autocomplete="current-password">
+      <p id="error-auth" class="error" role="alert" hidden></p>
+      <button type="submit" id="auth-enviar" class="btn-primario btn-ancho">Iniciar sesión</button>
+    </form>
+    <p class="auth-cambio">
+      <span id="auth-pregunta">¿No tienes cuenta?</span>
+      <button type="button" id="auth-cambiar" class="enlace">Crear cuenta</button>
+    </p>
+  </section>
+
+  <main class="app" id="app-principal" hidden>
+    <div class="cabecera">
+      <h1>Tareas y notas</h1>
+      <div class="cabecera-acciones">
+      <button type="button" id="btn-tema" class="btn-tema" aria-label="Cambiar a modo oscuro" aria-pressed="false">
+        <svg class="icono-sol" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="icono-luna" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button type="button" id="btn-dividir" class="btn-tema btn-dividir" aria-label="Separar en dos tarjetas" title="Separar en dos tarjetas" aria-pressed="false">
+        <svg class="icono-dividir" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="2.5"/><rect x="13" y="4" width="8" height="16" rx="2.5"/></svg>
+        <svg class="icono-unir" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/></svg>
+      </button>
+      <button type="button" id="btn-salir" class="btn-texto btn-salir">Cerrar sesión</button>
+      </div>
+    </div>
+    <p id="saludo" class="saludo"></p>
 
     <div class="segmentado" role="tablist" aria-label="Secciones" data-activa="tareas">
       <span class="thumb" aria-hidden="true"></span>
@@ -17,21 +52,45 @@
       <button type="button" role="tab" class="pestana" id="pestana-notas" data-pestana="notas" aria-controls="panel-notas" aria-selected="false" tabindex="-1">Notas</button>
     </div>
 
+    <div class="paneles">
+
     <!-- ===================== TAREAS ===================== -->
     <section class="panel" id="panel-tareas" role="tabpanel" aria-labelledby="pestana-tareas">
+      <h2 class="titulo-panel">Tareas</h2>
       <form id="form-tarea" class="form-tarea">
         <input type="text" id="input-tarea" class="campo" placeholder="Escribe una tarea..." autocomplete="off">
+        <div class="selector-fecha">
+          <input type="hidden" id="input-fecha">
+          <button type="button" id="btn-fecha" class="campo btn-fecha" aria-haspopup="dialog" aria-expanded="false" aria-label="Elegir fecha límite (opcional)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+            <span id="texto-fecha">Fecha</span>
+          </button>
+          <div id="calendario" class="calendario" role="dialog" aria-label="Calendario" hidden></div>
+        </div>
         <button type="submit" class="btn-redondo" aria-label="Agregar tarea">
           <span class="icono-mas" aria-hidden="true">+</span>
         </button>
       </form>
 
+      <p id="error-tarea" class="error" role="alert" hidden></p>
+
+      <div class="barra-tareas">
+        <div class="filtros" role="group" aria-label="Filtrar tareas">
+          <button type="button" class="filtro" data-filtro="todas" aria-pressed="true">Todas</button>
+          <button type="button" class="filtro" data-filtro="pendientes" aria-pressed="false">Pendientes</button>
+          <button type="button" class="filtro" data-filtro="completadas" aria-pressed="false">Completadas</button>
+        </div>
+        <span id="contador" class="contador"></span>
+      </div>
+
       <ul id="lista-tareas" class="lista"></ul>
-      <p id="vacia-tareas" class="lista-vacia">No tienes tareas pendientes.</p>
+      <p id="vacia-tareas" class="lista-vacia"></p>
+      <button type="button" id="btn-borrar-completadas" class="btn-texto btn-borrar-completadas" hidden>Borrar completadas</button>
     </section>
 
     <!-- ===================== NOTAS ===================== -->
     <section class="panel" id="panel-notas" role="tabpanel" aria-labelledby="pestana-notas" hidden>
+      <h2 class="titulo-panel">Notas</h2>
       <form id="form-nota" class="form-nota">
         <input type="text" id="input-titulo" class="campo" placeholder="Título de la nota" autocomplete="off">
         <textarea id="input-contenido" class="campo" placeholder="Escribe tu nota..." rows="3"></textarea>
@@ -41,10 +100,25 @@
         </div>
       </form>
 
+      <p id="error-nota" class="error" role="alert" hidden></p>
+      <input type="search" id="buscador" class="campo buscador" placeholder="Buscar en tus notas..." aria-label="Buscar notas" autocomplete="off">
+
       <div id="contenedor-notas" class="lista"></div>
-      <p id="vacia-notas" class="lista-vacia">Aún no tienes notas. Escribe la primera arriba.</p>
+      <p id="vacia-notas" class="lista-vacia"></p>
     </section>
+
+    </div><!-- /paneles -->
+
+    <div class="barra-datos">
+      <button type="button" id="btn-exportar" class="btn-texto">Exportar copia</button>
+      <button type="button" id="btn-importar" class="btn-texto">Importar copia</button>
+      <input type="file" id="archivo-importar" accept="application/json" hidden>
+    </div>
   </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <svg class="paisaje" viewBox="0 0 1440 320" preserveAspectRatio="none" aria-hidden="true"><path class="m1" d="M0 320V190l180-90 160 80 210-130 230 150 200-110 260 120v110z"/><path class="m2" d="M0 320V250l240-70 220 60 260-90 250 80 270-50v140z"/></svg>
 
   <script src="app.js" defer></script>
 </body>
