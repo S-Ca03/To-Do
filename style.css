@@ -974,3 +974,97 @@ body.arrastrando-imagen, body.arrastrando-imagen * { cursor: grabbing !important
   position: fixed; z-index: 70; height: 3px; border-radius: 2px; pointer-events: none;
   background: var(--acento); box-shadow: 0 0 10px rgba(10, 132, 255, 0.7);
 }
+
+/* ==========================================================================
+   Escritorio: ventanas de notas flotantes
+   ========================================================================== */
+
+.escritorio { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+
+.ventana {
+  position: absolute; pointer-events: auto; max-width: none; max-height: none;
+  box-shadow: 0 14px 40px rgba(10, 14, 40, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.ventana.activa { box-shadow: 0 30px 80px rgba(10, 14, 40, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+.ventana:not(.activa) .editor-herramientas { opacity: 0.55; }
+
+/* La barra de arriba sirve para mover la ventana */
+.ventana .editor-barra { justify-content: flex-start; gap: 12px; cursor: grab; touch-action: none; user-select: none; }
+.ventana .editor-barra:active { cursor: grabbing; }
+.cerrar-ventana {
+  width: 22px; height: 22px; border: none; border-radius: 50%; background: #ff5f57; color: transparent;
+  font-size: 11px; line-height: 1; cursor: pointer; transition: color 0.15s ease, transform 0.15s ease;
+}
+.cerrar-ventana:hover { color: rgba(0, 0, 0, 0.6); }
+.cerrar-ventana:active { transform: scale(0.88); }
+.cerrar-ventana:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+.asa-ventana { position: absolute; width: 20px; height: 20px; z-index: 8; touch-action: none; }
+.asa-v-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.asa-v-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.asa-v-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.asa-v-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+/* Dock con las notas abiertas */
+.dock {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 9999; pointer-events: auto;
+  display: flex; gap: 4px; max-width: calc(100vw - 24px); overflow-x: auto; padding: 5px;
+  border-radius: 18px; background: var(--vidrio-fuerte); border: 1px solid var(--borde-vidrio);
+  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 10px 30px var(--sombra);
+}
+.chip {
+  flex-shrink: 0; max-width: 170px; padding: 8px 14px; border: none; border-radius: 13px; background: transparent;
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 0.2s ease;
+}
+.chip:hover { background: rgba(118, 118, 128, 0.18); }
+.chip.activa { background: var(--acento); color: #ffffff; }
+.chip:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+/* En pantallas pequeñas no caben ventanas flotantes: cada una ocupa toda la pantalla
+   y se cambia de una a otra desde el dock */
+@media (max-width: 700px) {
+  .ventana { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; padding-bottom: 64px; }
+  .asa-ventana { display: none; }
+  .ventana .editor-barra { cursor: default; }
+}
+
+/* Tiradores de la imagen: un poco hacia dentro y con margen de desplazamiento, para que
+   los de abajo no queden recortados contra el borde de la ventana */
+.editor-cuerpo { scroll-padding: 30px; }
+.asa-nw { top: -5px; left: -5px; }
+.asa-ne { top: -5px; right: -5px; }
+.asa-sw { bottom: -5px; left: -5px; }
+.asa-se { bottom: -5px; right: -5px; }
+.editor-herramientas .herr { height: 32px; padding: 0 9px; font-size: 13px; }
+
+/* ==========================================================================
+   Ventanas: redimensionado visible desde cualquier borde y maximizar
+   ========================================================================== */
+
+.asa-v-n, .asa-v-s { left: 20px; right: 20px; width: auto; height: 10px; cursor: ns-resize; }
+.asa-v-e, .asa-v-w { top: 20px; bottom: 20px; width: 10px; height: auto; cursor: ew-resize; }
+.asa-v-n { top: -5px; } .asa-v-s { bottom: -5px; }
+.asa-v-e { right: -5px; } .asa-v-w { left: -5px; }
+.asa-v-nw, .asa-v-ne, .asa-v-sw, .asa-v-se { z-index: 9; }
+
+/* Marca de agarre en la esquina inferior derecha, para que se note que se puede estirar */
+.asa-v-se::after {
+  content: ""; position: absolute; right: 9px; bottom: 9px; width: 10px; height: 10px; pointer-events: none;
+  background: linear-gradient(135deg, transparent 0 40%, rgba(118, 118, 128, 0.7) 40% 52%, transparent 52% 66%, rgba(118, 118, 128, 0.7) 66% 78%, transparent 78%);
+}
+
+.max-ventana {
+  width: 22px; height: 22px; border: none; border-radius: 50%; background: #28c840; color: transparent;
+  font-size: 12px; line-height: 1; cursor: pointer; transition: color 0.15s ease, transform 0.15s ease;
+}
+.max-ventana:hover { color: rgba(0, 0, 0, 0.6); }
+.max-ventana:active { transform: scale(0.88); }
+.max-ventana:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.ventana.maximizada { border-radius: 0; }
+.ventana.maximizada .asa-ventana { display: none; }
+@media (max-width: 700px) { .max-ventana { display: none; } }
+
+/* Tarjeta de la lista que recibirá la imagen que estás arrastrando */
+.nota.destino-soltar { outline: 3px solid var(--acento); outline-offset: 2px; box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.18); }

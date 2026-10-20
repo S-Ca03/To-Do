@@ -532,6 +532,7 @@ contenedorNotas.addEventListener("click", (event) => {
     renderizarNotas();
   } else if (event.target.classList.contains("btn-eliminar")) {
     animarSalida(div, () => {
+      ventanas.get(id)?.cerrar(false);
       const indice = notas.findIndex((n) => n.id === id);
       const [borrada] = notas.splice(indice, 1);
       guardarNotas();
@@ -543,492 +544,723 @@ contenedorNotas.addEventListener("click", (event) => {
       });
     });
   } else {
-    abrirEditor(id, div);
+    abrirVentana(id, div);
   }
 });
 
 contenedorNotas.addEventListener("keydown", (event) => {
   if ((event.key === "Enter" || event.key === " ") && event.target.classList.contains("nota")) {
     event.preventDefault();
-    abrirEditor(Number(event.target.dataset.id), event.target);
+    abrirVentana(Number(event.target.dataset.id), event.target);
   }
 });
 
 /* ==========================================================================
-   Editor de notas (estilo Apple Notes)
+   Editor de notas (estilo Apple Notes), una instancia por ventana.
    La nota se expande desde su tarjeta. Formato con document.execCommand,
    imágenes reducidas a data URL y guardado automático mientras escribes.
    ========================================================================== */
 
-const editorFondo = $("#editor-fondo");
-const editor = $("#editor");
-const editorTitulo = $("#editor-titulo");
-const cuerpo = $("#editor-cuerpo");
-const editorEstado = $("#editor-estado");
-const herramientas = $(".editor-herramientas");
-const grupoTabla = $("#grupo-tabla");
-const archivoImagen = $("#editor-imagen");
-let notaAbierta = null;
-let temporizadorGuardado;
-let rangoGuardado = null;
+/* ==========================================================================
+   Ventanas de notas (modo escritorio)
+   Cada nota abierta es una ventana independiente: se mueve arrastrando su barra,
+   cambia de tamaño desde las esquinas y la última tocada queda por encima.
+   Su posición y tamaño se guardan con la nota.
+   ========================================================================== */
 
-const textoPlano = () => (cuerpo.innerText ?? cuerpo.textContent).trim();
+const escritorio = $("#escritorio");
+const dock = $("#dock");
+const plantillaVentana = $("#plantilla-ventana");
+const ventanas = new Map(); // id de nota -> { nota, v, enfocar, cerrar }
+const MIN_ANCHO = 340;
+const MIN_ALTO = 300;
+let ventanaActiva = null;
+let zSuperior = 100;
 
-function actualizarVacio() {
-  const vacio = !textoPlano() && !cuerpo.querySelector("img, table");
-  cuerpo.classList.toggle("vacio", vacio);
+function fijarOrigen(ventana, elemento) {
+  const caja = ventana.getBoundingClientRect();
+  const t = elemento.getBoundingClientRect();
+  ventana.style.setProperty("--ox", `${t.left + t.width / 2 - caja.left}px`);
+  ventana.style.setProperty("--oy", `${t.top + t.height / 2 - caja.top}px`);
 }
 
-function fijarOrigen(tarjetaEl) {
-  const caja = editor.getBoundingClientRect();
-  const t = tarjetaEl.getBoundingClientRect();
-  editor.style.setProperty("--ox", `${t.left + t.width / 2 - caja.left}px`);
-  editor.style.setProperty("--oy", `${t.top + t.height / 2 - caja.top}px`);
-}
-
-function abrirEditor(id, tarjetaEl) {
-  notaAbierta = notas.find((n) => n.id === id);
-  if (!notaAbierta) return;
-  editorTitulo.value = notaAbierta.titulo;
-  cuerpo.innerHTML = notaAbierta.html;
-  deseleccionar();
-  try { document.execCommand("enableObjectResizing", false, false); } catch {} // Firefox trae sus propios tiradores
-  editorEstado.textContent = "";
-  actualizarVacio();
-  document.body.classList.add("editor-abierto");
-  editorFondo.classList.remove("cerrando");
-  editorFondo.hidden = false;
-  fijarOrigen(tarjetaEl);
-  editor.classList.remove("abriendo", "cerrando");
-  void editor.offsetWidth;
-  editor.classList.add("abriendo");
-  if (!cuerpo.textContent.trim()) cuerpo.focus();
-}
-
-function guardarEditor() {
-  if (!notaAbierta) return;
-  clearTimeout(temporizadorGuardado);
-  notaAbierta.titulo = editorTitulo.value.trim() || "Sin título";
-  notaAbierta.html = limpiarHtml(cuerpo.innerHTML);
-  notaAbierta.contenido = textoPlano();
-  notaAbierta.editada = Date.now();
-  try {
-    guardarNotas();
-    editorEstado.textContent = "Guardado";
-  } catch {
-    editorEstado.textContent = "";
-    mostrarToast("No hay espacio para guardar: prueba con imágenes más pequeñas");
-  }
-}
-
-function programarGuardado() {
-  editorEstado.textContent = "Guardando…";
-  clearTimeout(temporizadorGuardado);
-  temporizadorGuardado = setTimeout(guardarEditor, 500);
-  actualizarVacio();
-}
-
-function cerrarEditor() {
-  if (!notaAbierta) return;
-  guardarEditor();
-  deseleccionar();
-  const id = notaAbierta.id;
-  notaAbierta = null;
-  renderizarNotas(); // la tarjeta ya muestra los cambios y sirve de destino de la animación
-  const tarjetaEl = [...contenedorNotas.children].find((d) => Number(d.dataset.id) === id);
-  if (tarjetaEl) fijarOrigen(tarjetaEl);
-  editor.classList.remove("abriendo");
-  editor.classList.add("cerrando");
-  editorFondo.classList.add("cerrando");
-  setTimeout(() => {
-    editorFondo.hidden = true;
-    editor.classList.remove("cerrando");
-    document.body.classList.remove("editor-abierto");
-  }, 300);
-}
-
-/* ----- selección, tablas e imágenes ----- */
-
-function restaurarRango() {
-  if (!rangoGuardado) return;
-  cuerpo.focus();
-  const seleccion = getSelection();
-  seleccion.removeAllRanges();
-  seleccion.addRange(rangoGuardado);
-}
-
-function celdaActual() {
-  const nodo = getSelection().anchorNode;
-  if (!nodo || !cuerpo.contains(nodo)) return null;
-  return (nodo.nodeType === 1 ? nodo : nodo.parentElement).closest("td, th");
-}
-
-function ponerCursor(elemento) {
-  const rango = document.createRange();
-  rango.selectNodeContents(elemento);
-  rango.collapse(true);
-  const seleccion = getSelection();
-  seleccion.removeAllRanges();
-  seleccion.addRange(rango);
-}
-
-function insertarTabla() {
-  const fila = "<tr>" + "<td><br></td>".repeat(3) + "</tr>";
-  document.execCommand("insertHTML", false, `<table><tbody>${fila.repeat(3)}</tbody></table><div><br></div>`);
-}
-
-function agregarFila() {
-  const celda = celdaActual();
-  if (!celda) return;
-  const nueva = celda.parentElement.cloneNode(true);
-  nueva.querySelectorAll("td, th").forEach((c) => (c.innerHTML = "<br>"));
-  celda.parentElement.after(nueva);
-}
-
-function agregarColumna() {
-  const celda = celdaActual();
-  if (!celda) return;
-  const indice = celda.cellIndex;
-  [...celda.closest("table").rows].forEach((fila) => {
-    const nueva = document.createElement("td");
-    nueva.innerHTML = "<br>";
-    fila.cells[indice].after(nueva);
+function actualizarDock() {
+  dock.innerHTML = "";
+  ventanas.forEach(({ nota, v, enfocar }) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip" + (v === ventanaActiva ? " activa" : "");
+    chip.textContent = nota.titulo;
+    chip.addEventListener("click", enfocar);
+    dock.append(chip);
   });
+  dock.hidden = ventanas.size === 0;
 }
 
-function quitarTabla() {
-  celdaActual()?.closest("table").remove();
+function geometriaInicial(nota) {
+  const g = nota.ventana ?? {
+    x: 70 + ventanas.size * 30, y: 30 + ventanas.size * 30,
+    w: Math.min(660, innerWidth - 40), h: Math.min(660, innerHeight - 70),
+  };
+  const w = Math.min(g.w, innerWidth - 20);
+  const h = Math.min(g.h, innerHeight - 20);
+  return { x: Math.max(0, Math.min(g.x, innerWidth - w)), y: Math.max(0, Math.min(g.y, innerHeight - h)), w, h };
 }
 
-function reducirImagen(archivo, maximo = 1100) {
-  return new Promise((resolver, rechazar) => {
-    const url = URL.createObjectURL(archivo);
-    const img = new Image();
-    img.onload = () => {
-      const escala = Math.min(1, maximo / Math.max(img.width, img.height));
-      const lienzo = document.createElement("canvas");
-      lienzo.width = Math.round(img.width * escala);
-      lienzo.height = Math.round(img.height * escala);
-      const ctx = lienzo.getContext("2d");
-      ctx.fillStyle = "#ffffff"; // los PNG transparentes no quedan negros al pasar a JPEG
-      ctx.fillRect(0, 0, lienzo.width, lienzo.height);
-      ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
-      URL.revokeObjectURL(url);
-      resolver(lienzo.toDataURL("image/jpeg", 0.8));
-    };
-    img.onerror = rechazar;
-    img.src = url;
-  });
+function abrirVentana(id, origenEl) {
+  const abierta = ventanas.get(id);
+  if (abierta) return abierta.enfocar(); // ya está abierta: se trae al frente
+  const nota = notas.find((n) => n.id === id);
+  if (nota) crearVentana(nota, origenEl);
 }
 
-async function insertarImagen(archivo) {
-  try {
-    const url = await reducirImagen(archivo);
-    restaurarRango();
-    document.execCommand("insertImage", false, url);
-    programarGuardado();
-  } catch {
-    mostrarToast("No se pudo insertar la imagen");
+function cerrarTodasVentanas() {
+  ventanas.forEach(({ cerrar }) => cerrar(false));
+}
+
+function crearVentana(nota, origenEl) {
+  const v = plantillaVentana.content.firstElementChild.cloneNode(true);
+  const limpiezas = []; // listeners globales que hay que quitar al cerrar
+  const escuchar = (objetivo, tipo, fn) => {
+    objetivo.addEventListener(tipo, fn);
+    limpiezas.push(() => objetivo.removeEventListener(tipo, fn));
+  };
+  let cerrada = false;
+
+  const editorTitulo = v.querySelector(".editor-titulo");
+  const cuerpo = v.querySelector(".editor-cuerpo");
+  const editorEstado = v.querySelector(".editor-estado");
+  const herramientas = v.querySelector(".editor-herramientas");
+  const grupoTabla = v.querySelector('[data-grupo="tabla"]');
+  const archivoImagen = v.querySelector(".editor-imagen");
+  let temporizadorGuardado;
+  let rangoGuardado = null;
+
+  const textoPlano = () => (cuerpo.innerText ?? cuerpo.textContent).trim();
+
+  function actualizarVacio() {
+    const vacio = !textoPlano() && !cuerpo.querySelector("img, table");
+    cuerpo.classList.toggle("vacio", vacio);
   }
-}
 
-/* ----- imágenes: seleccionar, redimensionar, alinear y mover ----- */
-
-const zona = $(".editor-zona");
-const marco = $("#img-marco");
-const grupoImagen = $("#grupo-imagen");
-const CLASES_IMAGEN = ["img-izq", "img-centro", "img-der", "flota-izq", "flota-der"];
-let imagenSel = null;
-
-function deseleccionar() {
-  imagenSel = null;
-  marco.hidden = true;
-  grupoImagen.hidden = true;
-}
-
-// El marco es un elemento aparte (no forma parte del contenido guardado)
-// que se dibuja encima de la imagen seleccionada.
-function ubicarMarco() {
-  if (!imagenSel || !cuerpo.contains(imagenSel)) return deseleccionar();
-  const z = zona.getBoundingClientRect();
-  const r = imagenSel.getBoundingClientRect();
-  Object.assign(marco.style, {
-    left: `${r.left - z.left}px`, top: `${r.top - z.top}px`, width: `${r.width}px`, height: `${r.height}px`,
-  });
-  marco.hidden = false;
-  grupoImagen.hidden = false;
-}
-
-function alinearImagen(clase) {
-  if (!imagenSel) return;
-  imagenSel.classList.remove(...CLASES_IMAGEN);
-  imagenSel.classList.add(clase);
-  ubicarMarco();
-}
-
-// Sube o baja la imagen un bloque (alternativa al arrastre, útil en el celular)
-function moverImagen(direccion) {
-  if (!imagenSel || imagenSel.closest("td, th")) return;
-  let bloque = imagenSel;
-  while (bloque.parentElement !== cuerpo) bloque = bloque.parentElement;
-  const compartido = bloque === imagenSel || bloque.textContent.trim() || bloque.querySelectorAll("img").length > 1;
-  if (compartido) {
-    const aparte = document.createElement("div"); // la imagen se aparta en su propio bloque
-    bloque.before(aparte);
-    aparte.append(imagenSel);
-    bloque = aparte;
+  function guardarEditor() {
+    if (cerrada) return;
+    clearTimeout(temporizadorGuardado);
+    nota.titulo = editorTitulo.value.trim() || "Sin título";
+    nota.html = limpiarHtml(cuerpo.innerHTML);
+    nota.contenido = textoPlano();
+    nota.editada = Date.now();
+    try {
+      guardarNotas();
+      editorEstado.textContent = "Guardado";
+      renderizarNotas();
+      actualizarDock();
+    } catch {
+      editorEstado.textContent = "";
+      mostrarToast("No hay espacio para guardar: prueba con imágenes más pequeñas");
+    }
   }
-  const vecino = direccion < 0 ? bloque.previousElementSibling : bloque.nextElementSibling;
-  if (vecino) direccion < 0 ? vecino.before(bloque) : vecino.after(bloque);
-  imagenSel.scrollIntoView?.({ block: "nearest" });
-  ubicarMarco();
-}
 
-function quitarImagen() {
-  imagenSel?.remove();
-  deseleccionar();
-}
+  function programarGuardado() {
+    editorEstado.textContent = "Guardando…";
+    clearTimeout(temporizadorGuardado);
+    temporizadorGuardado = setTimeout(guardarEditor, 500);
+    actualizarVacio();
+  }
 
-let acabaDeArrastrar = false;
+  /* ----- selección, tablas e imágenes ----- */
 
-cuerpo.addEventListener("click", (event) => {
-  if (acabaDeArrastrar) return;
-  if (event.target.tagName === "IMG") {
-    imagenSel = event.target;
+  // Devuelve el cursor al editor. Si nunca se hizo clic dentro (o la posición ya no existe),
+  // lo pone al final del texto: sin esto, los botones no hacían nada hasta tocar la nota.
+  function restaurarRango() {
+    cuerpo.focus();
+    const seleccion = getSelection();
+    let rango = rangoGuardado;
+    if (!rango || !cuerpo.contains(rango.startContainer)) {
+      rango = document.createRange();
+      rango.selectNodeContents(cuerpo);
+      rango.collapse(false);
+    }
+    seleccion.removeAllRanges();
+    seleccion.addRange(rango);
+  }
+
+  function celdaActual() {
+    const nodo = getSelection().anchorNode;
+    if (!nodo || !cuerpo.contains(nodo)) return null;
+    return (nodo.nodeType === 1 ? nodo : nodo.parentElement).closest("td, th");
+  }
+
+  function ponerCursor(elemento) {
+    const rango = document.createRange();
+    rango.selectNodeContents(elemento);
+    rango.collapse(true);
+    const seleccion = getSelection();
+    seleccion.removeAllRanges();
+    seleccion.addRange(rango);
+  }
+
+  function insertarTabla() {
+    const fila = "<tr>" + "<td><br></td>".repeat(3) + "</tr>";
+    document.execCommand("insertHTML", false, `<table><tbody>${fila.repeat(3)}</tbody></table><div><br></div>`);
+  }
+
+  function agregarFila() {
+    const celda = celdaActual();
+    if (!celda) return;
+    const nueva = celda.parentElement.cloneNode(true);
+    nueva.querySelectorAll("td, th").forEach((c) => (c.innerHTML = "<br>"));
+    celda.parentElement.after(nueva);
+  }
+
+  function agregarColumna() {
+    const celda = celdaActual();
+    if (!celda) return;
+    const indice = celda.cellIndex;
+    [...celda.closest("table").rows].forEach((fila) => {
+      const nueva = document.createElement("td");
+      nueva.innerHTML = "<br>";
+      fila.cells[indice].after(nueva);
+    });
+  }
+
+  function quitarTabla() {
+    celdaActual()?.closest("table").remove();
+  }
+
+  function reducirImagen(archivo, maximo = 1100) {
+    return new Promise((resolver, rechazar) => {
+      const url = URL.createObjectURL(archivo);
+      const img = new Image();
+      img.onload = () => {
+        const escala = Math.min(1, maximo / Math.max(img.width, img.height));
+        const lienzo = document.createElement("canvas");
+        lienzo.width = Math.round(img.width * escala);
+        lienzo.height = Math.round(img.height * escala);
+        const ctx = lienzo.getContext("2d");
+        ctx.fillStyle = "#ffffff"; // los PNG transparentes no quedan negros al pasar a JPEG
+        ctx.fillRect(0, 0, lienzo.width, lienzo.height);
+        ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+        URL.revokeObjectURL(url);
+        resolver(lienzo.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = rechazar;
+      img.src = url;
+    });
+  }
+
+  async function insertarImagen(archivo) {
+    try {
+      const url = await reducirImagen(archivo);
+      restaurarRango();
+      const antes = new Set(cuerpo.querySelectorAll("img"));
+      document.execCommand("insertImage", false, url);
+      const nueva = [...cuerpo.querySelectorAll("img")].find((i) => !antes.has(i));
+      if (nueva) {
+        // Tamaño inicial manejable dentro de la ventana; la imagen queda seleccionada
+        nueva.addEventListener("load", () => {
+          if (!nueva.getAttribute("width")) nueva.setAttribute("width", Math.min(nueva.naturalWidth, 360));
+          ubicarMarco();
+          programarGuardado();
+        }, { once: true });
+        nueva.draggable = false;
+        imagenSel = nueva;
+        nueva.scrollIntoView?.({ block: "nearest" });
+        ubicarMarco();
+      }
+      programarGuardado();
+    } catch {
+      mostrarToast("No se pudo insertar la imagen");
+    }
+  }
+
+  /* ----- imágenes: seleccionar, redimensionar, alinear y mover ----- */
+
+  const zona = v.querySelector(".editor-zona");
+  const marco = v.querySelector(".img-marco");
+  const grupoImagen = v.querySelector('[data-grupo="imagen"]');
+  const CLASES_IMAGEN = ["img-izq", "img-centro", "img-der", "flota-izq", "flota-der"];
+  let imagenSel = null;
+
+  function deseleccionar() {
+    imagenSel = null;
+    marco.hidden = true;
+    grupoImagen.hidden = true;
+  }
+
+  // El marco es un elemento aparte (no forma parte del contenido guardado)
+  // que se dibuja encima de la imagen seleccionada.
+  function ubicarMarco() {
+    if (!imagenSel || !cuerpo.contains(imagenSel)) return deseleccionar();
+    const z = zona.getBoundingClientRect();
+    const r = imagenSel.getBoundingClientRect();
+    Object.assign(marco.style, {
+      left: `${r.left - z.left}px`, top: `${r.top - z.top}px`, width: `${r.width}px`, height: `${r.height}px`,
+    });
+    marco.hidden = false;
+    grupoImagen.hidden = false;
+  }
+
+  function alinearImagen(clase) {
+    if (!imagenSel) return;
+    imagenSel.classList.remove(...CLASES_IMAGEN);
+    imagenSel.classList.add(clase);
     ubicarMarco();
-  } else {
+  }
+
+  // Sube o baja la imagen un bloque (alternativa al arrastre, útil en el celular)
+  function moverImagen(direccion) {
+    if (!imagenSel || imagenSel.closest("td, th")) return;
+    let bloque = imagenSel;
+    while (bloque.parentElement !== cuerpo) bloque = bloque.parentElement;
+    const compartido = bloque === imagenSel || bloque.textContent.trim() || bloque.querySelectorAll("img").length > 1;
+    if (compartido) {
+      const aparte = document.createElement("div"); // la imagen se aparta en su propio bloque
+      bloque.before(aparte);
+      aparte.append(imagenSel);
+      bloque = aparte;
+    }
+    const vecino = direccion < 0 ? bloque.previousElementSibling : bloque.nextElementSibling;
+    if (vecino) direccion < 0 ? vecino.before(bloque) : vecino.after(bloque);
+    imagenSel.scrollIntoView?.({ block: "nearest" });
+    ubicarMarco();
+  }
+
+  function quitarImagen() {
+    imagenSel?.remove();
     deseleccionar();
   }
-});
 
-// Tiradores de las esquinas: cambian el ancho y el alto se ajusta solo (proporcional)
-marco.addEventListener("pointerdown", (event) => {
-  const asa = event.target.closest(".asa");
-  if (!asa || !imagenSel) return;
-  event.preventDefault();
-  asa.setPointerCapture?.(event.pointerId);
+  let acabaDeArrastrar = false;
 
-  const inicioX = event.clientX;
-  const anchoInicial = imagenSel.getBoundingClientRect().width;
-  const haciaOeste = asa.dataset.esq.includes("w");
-  const factor = imagenSel.classList.contains("img-centro") ? 2 : 1; // centrada: crece por ambos lados
-  const maximo = cuerpo.clientWidth - 24;
-
-  const mover = (e) => {
-    const dx = (e.clientX - inicioX) * factor * (haciaOeste ? -1 : 1);
-    imagenSel.setAttribute("width", Math.round(Math.max(40, Math.min(maximo, anchoInicial + dx))));
-    imagenSel.removeAttribute("height");
-    ubicarMarco();
-  };
-  const soltar = () => {
-    asa.removeEventListener("pointermove", mover);
-    asa.removeEventListener("pointerup", soltar);
-    asa.removeEventListener("pointercancel", soltar);
-    programarGuardado();
-  };
-  asa.addEventListener("pointermove", mover);
-  asa.addEventListener("pointerup", soltar);
-  asa.addEventListener("pointercancel", soltar);
-});
-
-// Mover arrastrando: arrastre propio (el nativo cambia según el navegador y falla en el
-// celular). Mientras arrastras se ve una copia flotante y una línea azul que marca el
-// punto de la nota donde caerá la imagen: entre dos bloques (párrafos, listas, tablas).
-cuerpo.addEventListener("dragstart", (event) => {
-  if (event.target.tagName === "IMG") event.preventDefault();
-});
-
-// Bloque (hijo directo del editor) más cercano a la altura y, sin contar el de la propia imagen
-function bloqueDestino(y, imagen) {
-  const bloques = [...cuerpo.children].filter(
-    (b) => b !== imagen && !(b.contains(imagen) && !b.textContent.trim() && b.querySelectorAll("img").length === 1)
-  );
-  let mejor = null;
-  let distanciaMejor = Infinity;
-  bloques.forEach((bloque) => {
-    const r = bloque.getBoundingClientRect();
-    const distancia = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
-    if (distancia < distanciaMejor) {
-      distanciaMejor = distancia;
-      mejor = { bloque, despues: y > r.top + r.height / 2, rect: r };
+  cuerpo.addEventListener("click", (event) => {
+    if (acabaDeArrastrar) return;
+    if (event.target.tagName === "IMG") {
+      imagenSel = event.target;
+      ubicarMarco();
+    } else {
+      deseleccionar();
     }
   });
-  return mejor;
-}
 
-function soltarImagen(imagen, destino) {
-  const origen = imagen.parentElement;
-  const aparte = document.createElement("div");
-  aparte.append(imagen);
-  destino.bloque[destino.despues ? "after" : "before"](aparte);
-  // Si el bloque de origen se quedó vacío, se retira
-  if (origen.parentElement === cuerpo && origen.tagName === "DIV" && !origen.textContent.trim() && !origen.querySelector("img, table")) {
-    origen.remove();
+  // Tiradores de las esquinas: cambian el ancho y el alto se ajusta solo (proporcional)
+  marco.addEventListener("pointerdown", (event) => {
+    const asa = event.target.closest(".asa");
+    if (!asa || !imagenSel) return;
+    event.preventDefault();
+    asa.setPointerCapture?.(event.pointerId);
+
+    const inicioX = event.clientX;
+    const anchoInicial = imagenSel.getBoundingClientRect().width;
+    const haciaOeste = asa.dataset.esq.includes("w");
+    const factor = imagenSel.classList.contains("img-centro") ? 2 : 1; // centrada: crece por ambos lados
+    const maximo = cuerpo.clientWidth - 24;
+
+    const mover = (e) => {
+      const dx = (e.clientX - inicioX) * factor * (haciaOeste ? -1 : 1);
+      imagenSel.setAttribute("width", Math.round(Math.max(40, Math.min(maximo, anchoInicial + dx))));
+      imagenSel.removeAttribute("height");
+      ubicarMarco();
+    };
+    const soltar = () => {
+      asa.removeEventListener("pointermove", mover);
+      asa.removeEventListener("pointerup", soltar);
+      asa.removeEventListener("pointercancel", soltar);
+      programarGuardado();
+    };
+    asa.addEventListener("pointermove", mover);
+    asa.addEventListener("pointerup", soltar);
+    asa.addEventListener("pointercancel", soltar);
+  });
+
+  // Mover arrastrando: arrastre propio (el nativo cambia según el navegador, y Firefox/Safari
+  // lo cancelan con un pointercancel que hacía que la imagen "volviera" a su sitio).
+  // draggable=false desactiva el arrastre nativo por completo.
+  // Mientras arrastras se ve una copia flotante y una línea azul que marca dónde caerá:
+  // en esta nota, en otra ventana abierta o sobre la tarjeta de otra nota de la lista.
+  const prepararImagenes = () => cuerpo.querySelectorAll("img").forEach((i) => (i.draggable = false));
+
+  cuerpo.addEventListener("dragstart", (event) => {
+    if (event.target.tagName === "IMG") event.preventDefault();
+  });
+
+  // Bloque (hijo directo del editor) más cercano a la altura y, sin contar el de la propia imagen
+  function bloqueDestino(y, imagen, contenedor) {
+    const bloques = [...contenedor.children].filter(
+      (b) => b !== imagen && !(b.contains(imagen) && !b.textContent.trim() && b.querySelectorAll("img").length === 1)
+    );
+    if (!bloques.length) return { contenedor, bloque: null, despues: false, rect: contenedor.getBoundingClientRect() };
+
+    let mejor = null;
+    let distanciaMejor = Infinity;
+    bloques.forEach((bloque) => {
+      const r = bloque.getBoundingClientRect();
+      const distancia = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      if (distancia < distanciaMejor) {
+        distanciaMejor = distancia;
+        mejor = { contenedor, bloque, despues: y > r.top + r.height / 2, rect: r };
+      }
+    });
+    return mejor;
   }
-}
 
-cuerpo.addEventListener("pointerdown", (event) => {
-  const imagen = event.target;
-  if (imagen.tagName !== "IMG" || event.button !== 0) return;
-
-  const inicio = { x: event.clientX, y: event.clientY };
-  let arrastrando = false;
-  let destino = null;
-  let fantasma;
-  let guia;
-
-  const mover = (e) => {
-    if (!arrastrando) {
-      if (Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6) return; // aún es un clic
-      arrastrando = true;
-      marco.hidden = true;
-      document.body.classList.add("arrastrando-imagen");
-      fantasma = document.createElement("div");
-      fantasma.className = "img-fantasma";
-      fantasma.append(imagen.cloneNode());
-      guia = document.createElement("div");
-      guia.className = "guia-soltar";
-      document.body.append(fantasma, guia);
+  // Saca la imagen de donde está (y retira su bloque si se quedó vacío)
+  function quitarDeOrigen(imagen) {
+    const origen = imagen.parentElement;
+    imagen.remove();
+    if (origen.parentElement === cuerpo && origen.tagName === "DIV" && !origen.textContent.trim() && !origen.querySelector("img, table")) {
+      origen.remove();
     }
+  }
 
-    fantasma.style.left = `${e.clientX}px`;
-    fantasma.style.top = `${e.clientY}px`;
+  function soltarImagen(imagen, destino) {
+    quitarDeOrigen(imagen);
+    const aparte = document.createElement("div");
+    aparte.append(imagen);
+    if (destino.bloque) destino.bloque[destino.despues ? "after" : "before"](aparte);
+    else destino.contenedor.append(aparte);
+  }
 
-    // Desplazamiento automático al acercarse al borde del editor
-    const zonaRect = cuerpo.getBoundingClientRect();
-    if (e.clientY < zonaRect.top + 40) cuerpo.scrollTop -= 14;
-    if (e.clientY > zonaRect.bottom - 40) cuerpo.scrollTop += 14;
+  function enviarAVentana(imagen, destino, otra) {
+    soltarImagen(imagen, destino);
+    deseleccionar();
+    programarGuardado();
+    otra.recibirImagen(imagen);
+    mostrarToast(`Imagen movida a «${otra.nota.titulo}»`);
+  }
 
-    destino = bloqueDestino(e.clientY, imagen);
-    guia.hidden = !destino;
-    if (destino) {
-      const r = destino.rect;
-      guia.style.left = `${zonaRect.left + 14}px`;
-      guia.style.width = `${cuerpo.clientWidth - 28}px`;
-      guia.style.top = `${(destino.despues ? r.bottom : r.top) - 1.5}px`;
+  // Suelta la imagen sobre la tarjeta de la lista de otra nota
+  function pasarANota(idDestino, imagen) {
+    if (idDestino === nota.id) {
+      imagenSel = imagen;
+      return ubicarMarco();
     }
-  };
+    const abierta = ventanas.get(idDestino);
+    if (abierta) return enviarAVentana(imagen, { contenedor: abierta.cuerpo, bloque: null }, abierta);
 
-  const soltar = () => {
-    document.removeEventListener("pointermove", mover);
-    document.removeEventListener("pointerup", soltar);
-    document.removeEventListener("pointercancel", soltar);
-    if (!arrastrando) return;
+    const otraNota = notas.find((n) => n.id === idDestino);
+    if (!otraNota) return;
+    otraNota.html = limpiarHtml(`${otraNota.html}<div>${imagen.outerHTML}</div>`);
+    otraNota.editada = Date.now();
+    quitarDeOrigen(imagen);
+    deseleccionar();
+    programarGuardado();
+    try {
+      guardarNotas();
+    } catch {
+      mostrarToast("No hay espacio para guardar la imagen en esa nota");
+    }
+    renderizarNotas();
+    mostrarToast(`Imagen movida a «${otraNota.titulo}»`);
+  }
 
-    fantasma.remove();
-    guia.remove();
-    document.body.classList.remove("arrastrando-imagen");
-    acabaDeArrastrar = true; // evita que el clic posterior cambie la selección
-    setTimeout(() => (acabaDeArrastrar = false), 0);
+  cuerpo.addEventListener("pointerdown", (event) => {
+    const imagen = event.target;
+    if (imagen.tagName !== "IMG" || event.button !== 0) return;
+    imagen.setPointerCapture?.(event.pointerId); // los eventos siguen llegando aunque el puntero salga de la imagen
 
-    if (destino) {
-      soltarImagen(imagen, destino);
+    const inicio = { x: event.clientX, y: event.clientY };
+    let arrastrando = false;
+    let destino = null;
+    let tarjeta = null;
+    let fantasma;
+    let guia;
+
+    const marcarTarjeta = (nueva) => {
+      if (tarjeta === nueva) return;
+      tarjeta?.classList.remove("destino-soltar");
+      tarjeta = nueva;
+      tarjeta?.classList.add("destino-soltar");
+    };
+
+    const mover = (e) => {
+      if (!arrastrando) {
+        if (Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6) return; // aún es un clic
+        arrastrando = true;
+        marco.hidden = true;
+        document.body.classList.add("arrastrando-imagen");
+        fantasma = document.createElement("div");
+        fantasma.className = "img-fantasma";
+        fantasma.append(imagen.cloneNode());
+        guia = document.createElement("div");
+        guia.className = "guia-soltar";
+        document.body.append(fantasma, guia);
+      }
+
+      fantasma.style.left = `${e.clientX}px`;
+      fantasma.style.top = `${e.clientY}px`;
+
+      // ¿Qué hay bajo el puntero? Este editor, el de otra ventana o una tarjeta de la lista
+      const bajo = document.elementFromPoint(e.clientX, e.clientY);
+      const cuerpoBajo = bajo?.closest(".editor-cuerpo") ?? null;
+      marcarTarjeta(cuerpoBajo ? null : bajo?.closest(".nota") ?? null);
+
+      destino = null;
+      if (cuerpoBajo) {
+        const zonaRect = cuerpoBajo.getBoundingClientRect();
+        // Desplazamiento automático al acercarse al borde del editor
+        if (e.clientY < zonaRect.top + 40) cuerpoBajo.scrollTop -= 14;
+        if (e.clientY > zonaRect.bottom - 40) cuerpoBajo.scrollTop += 14;
+
+        destino = bloqueDestino(e.clientY, imagen, cuerpoBajo);
+        const r = destino.rect;
+        guia.style.left = `${zonaRect.left + 14}px`;
+        guia.style.width = `${cuerpoBajo.clientWidth - 28}px`;
+        guia.style.top = `${(destino.bloque ? (destino.despues ? r.bottom : r.top) : zonaRect.top + 8) - 1.5}px`;
+      }
+      guia.hidden = !destino;
+    };
+
+    const soltar = () => {
+      document.removeEventListener("pointermove", mover);
+      document.removeEventListener("pointerup", soltar);
+      document.removeEventListener("pointercancel", soltar);
+      if (!arrastrando) return;
+
+      fantasma.remove();
+      guia.remove();
+      document.body.classList.remove("arrastrando-imagen");
+      const tarjetaDestino = tarjeta;
+      marcarTarjeta(null);
+      acabaDeArrastrar = true; // evita que el clic posterior cambie la selección
+      setTimeout(() => (acabaDeArrastrar = false), 0);
+
+      if (destino && destino.contenedor === cuerpo) {
+        soltarImagen(imagen, destino);
+        programarGuardado();
+        imagenSel = imagen;
+        ubicarMarco();
+      } else if (destino) {
+        const otra = [...ventanas.values()].find((x) => x.cuerpo === destino.contenedor);
+        if (otra) enviarAVentana(imagen, destino, otra);
+      } else if (tarjetaDestino) {
+        pasarANota(Number(tarjetaDestino.dataset.id), imagen);
+      } else {
+        imagenSel = imagen; // soltada fuera de cualquier nota: se queda donde estaba
+        ubicarMarco();
+      }
+    };
+
+    document.addEventListener("pointermove", mover);
+    document.addEventListener("pointerup", soltar);
+    document.addEventListener("pointercancel", soltar);
+  });
+
+  cuerpo.addEventListener("scroll", ubicarMarco);
+  escuchar(window, "resize", ubicarMarco);
+
+  /* ----- eventos ----- */
+
+  // mousedown sin quitar el foco, para no perder la selección al pulsar un botón
+  herramientas.addEventListener("mousedown", (event) => {
+    if (event.target.closest("button")) event.preventDefault();
+  });
+
+  herramientas.addEventListener("click", (event) => {
+    const boton = event.target.closest("button");
+    if (!boton) return;
+    const { cmd, bloque, accion } = boton.dataset;
+    restaurarRango();
+
+    if (cmd) document.execCommand(cmd);
+    else if (bloque) document.execCommand("formatBlock", false, bloque);
+    else if (accion === "check") {
+      document.execCommand("insertUnorderedList");
+      getSelection().anchorNode?.parentElement?.closest("ul")?.classList.toggle("check");
+    } else if (accion === "tabla") insertarTabla();
+    else if (accion === "imagen") archivoImagen.click();
+    else if (accion === "fila") agregarFila();
+    else if (accion === "columna") agregarColumna();
+    else if (accion === "quitar-tabla") quitarTabla();
+    else if (accion === "alinear") alinearImagen(boton.dataset.alin);
+    else if (accion === "subir") moverImagen(-1);
+    else if (accion === "bajar") moverImagen(1);
+    else if (accion === "quitar-imagen") quitarImagen();
+
+    programarGuardado();
+    grupoTabla.hidden = !celdaActual();
+    ubicarMarco();
+  });
+
+  archivoImagen.addEventListener("change", () => {
+    const archivo = archivoImagen.files[0];
+    archivoImagen.value = "";
+    if (archivo) insertarImagen(archivo);
+  });
+
+  cuerpo.addEventListener("input", () => {
+    prepararImagenes();
+    programarGuardado();
+    ubicarMarco();
+  });
+  editorTitulo.addEventListener("input", programarGuardado);
+
+  // Pegar: una imagen se inserta reducida; cualquier otra cosa entra como texto limpio
+  cuerpo.addEventListener("paste", (event) => {
+    event.preventDefault();
+    const imagen = [...event.clipboardData.files].find((f) => f.type.startsWith("image/"));
+    if (imagen) insertarImagen(imagen);
+    else document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+  });
+
+  // Tab salta de celda en celda (y crea una fila nueva al final de la tabla)
+  cuerpo.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const celda = celdaActual();
+    if (!celda) return;
+    event.preventDefault();
+    const tabla = celda.closest("table");
+    let celdas = [...tabla.querySelectorAll("td, th")];
+    const destino = celdas.indexOf(celda) + (event.shiftKey ? -1 : 1);
+    if (destino >= celdas.length) {
+      agregarFila();
+      celdas = [...tabla.querySelectorAll("td, th")];
+    }
+    if (celdas[destino]) ponerCursor(celdas[destino]);
+  });
+
+  // Casillas de la lista de verificación: clic en el círculo de la izquierda
+  cuerpo.addEventListener("click", (event) => {
+    const item = event.target;
+    if (item.tagName === "LI" && item.parentElement.classList.contains("check") && event.offsetX < 30) {
+      item.classList.toggle("hecho");
       programarGuardado();
     }
-    imagenSel = imagen;
+  });
+
+  escuchar(document, "selectionchange", () => {
+    const seleccion = getSelection();
+    if (!seleccion.rangeCount || !cuerpo.contains(seleccion.anchorNode)) return;
+    rangoGuardado = seleccion.getRangeAt(0).cloneRange();
+    grupoTabla.hidden = !celdaActual();
+  });
+
+
+  /* ----- ventana: foco, mover, redimensionar y cerrar ----- */
+
+  function enfocar() {
+    v.style.zIndex = ++zSuperior;
+    ventanaActiva = v;
+    document.querySelectorAll(".ventana").forEach((o) => o.classList.toggle("activa", o === v));
+    actualizarDock();
+  }
+
+  function guardarGeometria() {
+    nota.ventana = { x: v.offsetLeft, y: v.offsetTop, w: v.offsetWidth, h: v.offsetHeight };
+    try { guardarNotas(); } catch {}
+  }
+
+  // Arrastra una ventana: pointermove/up quedan en el elemento gracias a setPointerCapture
+  function arrastrar(elemento, evento, alMover) {
+    if (v.classList.contains("maximizada")) return;
+    elemento.setPointerCapture?.(evento.pointerId);
+    const x0 = evento.clientX;
+    const y0 = evento.clientY;
+    const inicio = { l: v.offsetLeft, t: v.offsetTop, w: v.offsetWidth, h: v.offsetHeight };
+    const mover = (e) => alMover(e.clientX - x0, e.clientY - y0, inicio);
+    const soltar = () => {
+      ["pointermove", "pointerup", "pointercancel"].forEach((t) => elemento.removeEventListener(t, t === "pointermove" ? mover : soltar));
+      guardarGeometria();
+    };
+    elemento.addEventListener("pointermove", mover);
+    elemento.addEventListener("pointerup", soltar);
+    elemento.addEventListener("pointercancel", soltar);
+  }
+
+  const barra = v.querySelector(".editor-barra");
+  barra.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button")) return;
+    arrastrar(barra, event, (dx, dy, i) => {
+      v.style.left = `${Math.min(innerWidth - 80, Math.max(80 - i.w, i.l + dx))}px`;
+      v.style.top = `${Math.min(innerHeight - 40, Math.max(0, i.t + dy))}px`;
+    });
+  });
+
+  v.querySelectorAll(".asa-ventana").forEach((asa) =>
+    asa.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      const lado = asa.dataset.esq;
+      arrastrar(asa, event, (dx, dy, i) => {
+        let { l, t, w, h } = { l: i.l, t: i.t, w: i.w, h: i.h };
+        if (lado.includes("e")) w = Math.max(MIN_ANCHO, i.w + dx);
+        if (lado.includes("s")) h = Math.max(MIN_ALTO, i.h + dy);
+        if (lado.includes("w")) { w = Math.max(MIN_ANCHO, i.w - dx); l = i.l + (i.w - w); }
+        if (lado.includes("n")) { h = Math.max(MIN_ALTO, i.h - dy); t = i.t + (i.h - h); }
+        Object.assign(v.style, { left: `${l}px`, top: `${t}px`, width: `${w}px`, height: `${h}px` });
+        ubicarMarco();
+      });
+    })
+  );
+
+  // Maximizar / restaurar (botón verde o doble clic en la barra)
+  function alternarMaximizar() {
+    if (v.classList.contains("maximizada")) {
+      const g = JSON.parse(v.dataset.previa);
+      Object.assign(v.style, { left: `${g.l}px`, top: `${g.t}px`, width: `${g.w}px`, height: `${g.h}px` });
+      v.classList.remove("maximizada");
+    } else {
+      v.dataset.previa = JSON.stringify({ l: v.offsetLeft, t: v.offsetTop, w: v.offsetWidth, h: v.offsetHeight });
+      Object.assign(v.style, { left: "0px", top: "0px", width: `${innerWidth}px`, height: `${innerHeight}px` });
+      v.classList.add("maximizada");
+    }
     ubicarMarco();
-  };
-
-  document.addEventListener("pointermove", mover);
-  document.addEventListener("pointerup", soltar);
-  document.addEventListener("pointercancel", soltar);
-});
-cuerpo.addEventListener("scroll", ubicarMarco);
-window.addEventListener("resize", ubicarMarco);
-
-/* ----- eventos ----- */
-
-// mousedown sin quitar el foco, para no perder la selección al pulsar un botón
-herramientas.addEventListener("mousedown", (event) => {
-  if (event.target.closest("button")) event.preventDefault();
-});
-
-herramientas.addEventListener("click", (event) => {
-  const boton = event.target.closest("button");
-  if (!boton) return;
-  const { cmd, bloque, accion } = boton.dataset;
-  restaurarRango();
-
-  if (cmd) document.execCommand(cmd);
-  else if (bloque) document.execCommand("formatBlock", false, bloque);
-  else if (accion === "check") {
-    document.execCommand("insertUnorderedList");
-    getSelection().anchorNode?.parentElement?.closest("ul")?.classList.toggle("check");
-  } else if (accion === "tabla") insertarTabla();
-  else if (accion === "imagen") archivoImagen.click();
-  else if (accion === "fila") agregarFila();
-  else if (accion === "columna") agregarColumna();
-  else if (accion === "quitar-tabla") quitarTabla();
-  else if (accion === "alinear") alinearImagen(boton.dataset.alin);
-  else if (accion === "subir") moverImagen(-1);
-  else if (accion === "bajar") moverImagen(1);
-  else if (accion === "quitar-imagen") quitarImagen();
-
-  programarGuardado();
-  grupoTabla.hidden = !celdaActual();
-  ubicarMarco();
-});
-
-archivoImagen.addEventListener("change", () => {
-  const archivo = archivoImagen.files[0];
-  archivoImagen.value = "";
-  if (archivo) insertarImagen(archivo);
-});
-
-cuerpo.addEventListener("input", () => {
-  programarGuardado();
-  ubicarMarco();
-});
-editorTitulo.addEventListener("input", programarGuardado);
-
-// Pegar: una imagen se inserta reducida; cualquier otra cosa entra como texto limpio
-cuerpo.addEventListener("paste", (event) => {
-  event.preventDefault();
-  const imagen = [...event.clipboardData.files].find((f) => f.type.startsWith("image/"));
-  if (imagen) insertarImagen(imagen);
-  else document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
-});
-
-// Tab salta de celda en celda (y crea una fila nueva al final de la tabla)
-cuerpo.addEventListener("keydown", (event) => {
-  if (event.key !== "Tab") return;
-  const celda = celdaActual();
-  if (!celda) return;
-  event.preventDefault();
-  const tabla = celda.closest("table");
-  let celdas = [...tabla.querySelectorAll("td, th")];
-  const destino = celdas.indexOf(celda) + (event.shiftKey ? -1 : 1);
-  if (destino >= celdas.length) {
-    agregarFila();
-    celdas = [...tabla.querySelectorAll("td, th")];
   }
-  if (celdas[destino]) ponerCursor(celdas[destino]);
-});
+  v.querySelector(".max-ventana").addEventListener("click", alternarMaximizar);
+  barra.addEventListener("dblclick", (event) => {
+    if (!event.target.closest("button")) alternarMaximizar();
+  });
 
-// Casillas de la lista de verificación: clic en el círculo de la izquierda
-cuerpo.addEventListener("click", (event) => {
-  const item = event.target;
-  if (item.tagName === "LI" && item.parentElement.classList.contains("check") && event.offsetX < 30) {
-    item.classList.toggle("hecho");
-    programarGuardado();
+  function cerrar(animar = true) {
+    if (cerrada) return;
+    guardarEditor();
+    cerrada = true;
+    deseleccionar();
+    limpiezas.forEach((f) => f());
+    ventanas.delete(nota.id);
+    if (ventanaActiva === v) ventanaActiva = null;
+    actualizarDock();
+    if (!animar) return v.remove();
+
+    const tarjetaEl = [...contenedorNotas.children].find((d) => Number(d.dataset.id) === nota.id);
+    if (tarjetaEl) fijarOrigen(v, tarjetaEl);
+    v.classList.remove("abriendo");
+    v.classList.add("cerrando");
+    setTimeout(() => v.remove(), 300);
   }
-});
 
-document.addEventListener("selectionchange", () => {
-  const seleccion = getSelection();
-  if (!seleccion.rangeCount || !cuerpo.contains(seleccion.anchorNode)) return;
-  rangoGuardado = seleccion.getRangeAt(0).cloneRange();
-  grupoTabla.hidden = !celdaActual();
-});
+  v.addEventListener("pointerdown", enfocar, true);
+  v.querySelector(".cerrar-ventana").addEventListener("click", () => cerrar());
+  escuchar(document, "keydown", (event) => {
+    if (event.key === "Escape" && ventanaActiva === v) cerrar();
+  });
 
-$("#editor-cerrar").addEventListener("click", cerrarEditor);
-$("#editor-hecho").addEventListener("click", cerrarEditor);
-editorFondo.addEventListener("click", (event) => {
-  if (event.target === editorFondo) cerrarEditor();
-});
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !editorFondo.hidden) cerrarEditor();
-});
+  /* ----- puesta en marcha ----- */
+  editorTitulo.value = nota.titulo;
+  cuerpo.innerHTML = nota.html;
+  actualizarVacio();
+  prepararImagenes();
+  deseleccionar();
+  try { document.execCommand("enableObjectResizing", false, false); } catch {} // Firefox trae sus propios tiradores
+
+  const g = geometriaInicial(nota);
+  Object.assign(v.style, { left: `${g.x}px`, top: `${g.y}px`, width: `${g.w}px`, height: `${g.h}px` });
+  escritorio.append(v);
+  ventanas.set(nota.id, {
+    nota, v, enfocar, cerrar, cuerpo,
+    recibirImagen(img) { // otra ventana te pasó una imagen
+      img.draggable = false;
+      programarGuardado();
+      imagenSel = img;
+      ubicarMarco();
+      enfocar();
+    },
+  });
+  enfocar();
+
+  if (origenEl) fijarOrigen(v, origenEl);
+  v.classList.add("abriendo");
+  if (!cuerpo.textContent.trim()) cuerpo.focus();
+}
 
 /* ==========================================================================
    Exportar / importar copia de seguridad (JSON)
@@ -1055,6 +1287,7 @@ $("#archivo-importar").addEventListener("change", async (event) => {
     if (!Array.isArray(datos.tareas) || !Array.isArray(datos.notas)) throw new Error("formato");
     if (!confirm("Importar reemplazará tus tareas y notas actuales. ¿Continuar?")) return;
 
+    cerrarTodasVentanas();
     tareas = datos.tareas;
     notas = datos.notas.map((n) => ({ ...n, html: limpiarHtml(n.html ?? textoAHtml(n.contenido ?? "")) }));
     siguienteIdTarea = calcularSiguienteId(tareas);
@@ -1184,6 +1417,7 @@ function cambiarModoAuth(modo) {
 
 // Carga las tareas y notas del usuario y reinicia el estado de la interfaz
 function cargarDatos(email) {
+  cerrarTodasVentanas(); // antes de cambiar las claves, para guardar en las del usuario anterior
   CLAVE_TAREAS = `tareas:${email}`;
   CLAVE_NOTAS = `notas:${email}`;
 
@@ -1225,6 +1459,7 @@ function mostrarApp(email) {
 }
 
 function cerrarSesion() {
+  cerrarTodasVentanas();
   localStorage.removeItem(CLAVE_SESION);
   appPrincipal.hidden = true;
   vistaAuth.hidden = false;

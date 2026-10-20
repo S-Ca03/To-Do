@@ -115,13 +115,17 @@
     </div>
   </main>
 
-  <!-- ===================== EDITOR DE NOTAS ===================== -->
-  <div id="editor-fondo" class="editor-fondo" hidden>
-    <section id="editor" class="editor" role="dialog" aria-modal="true" aria-label="Editor de nota">
+  <!-- ===================== ESCRITORIO DE NOTAS ===================== -->
+  <div id="escritorio" class="escritorio">
+    <div id="dock" class="dock" aria-label="Notas abiertas" hidden></div>
+  </div>
+
+  <template id="plantilla-ventana">
+    <section class="editor ventana" role="dialog" aria-label="Nota">
       <header class="editor-barra">
-        <button type="button" id="editor-cerrar" class="btn-texto">‹ Notas</button>
-        <span id="editor-estado" class="editor-estado" aria-live="polite"></span>
-        <button type="button" id="editor-hecho" class="btn-primario btn-chico">Listo</button>
+        <button type="button" class="cerrar-ventana" aria-label="Cerrar nota" title="Cerrar">✕</button>
+        <button type="button" class="max-ventana" aria-label="Maximizar nota" title="Maximizar">⤢</button>
+        <span class="editor-estado" aria-live="polite"></span>
       </header>
       <div class="editor-herramientas" role="toolbar" aria-label="Formato">
         <button type="button" class="herr" data-bloque="H1">Título</button>
@@ -139,12 +143,12 @@
         <span class="separador"></span>
         <button type="button" class="herr" data-accion="tabla">Tabla</button>
         <button type="button" class="herr" data-accion="imagen">Imagen</button>
-        <span id="grupo-tabla" class="grupo-tabla" hidden>
+        <span class="grupo-tabla" data-grupo="tabla" hidden>
           <button type="button" class="herr" data-accion="fila">+ Fila</button>
           <button type="button" class="herr" data-accion="columna">+ Columna</button>
           <button type="button" class="herr herr-peligro" data-accion="quitar-tabla">Quitar tabla</button>
         </span>
-        <span id="grupo-imagen" class="grupo-tabla" hidden>
+        <span class="grupo-tabla" data-grupo="imagen" hidden>
           <button type="button" class="herr" data-accion="alinear" data-alin="img-izq">Izquierda</button>
           <button type="button" class="herr" data-accion="alinear" data-alin="img-centro">Centro</button>
           <button type="button" class="herr" data-accion="alinear" data-alin="img-der">Derecha</button>
@@ -155,17 +159,26 @@
           <button type="button" class="herr herr-peligro" data-accion="quitar-imagen">Quitar imagen</button>
         </span>
       </div>
-      <input type="text" id="editor-titulo" class="editor-titulo" placeholder="Título" autocomplete="off" aria-label="Título de la nota">
+      <input type="text" class="editor-titulo" placeholder="Título" autocomplete="off" aria-label="Título de la nota">
       <div class="editor-zona">
-        <div id="editor-cuerpo" class="editor-cuerpo vacio" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenido de la nota" data-placeholder="Empieza a escribir..."></div>
-        <div id="img-marco" class="img-marco" hidden>
+        <div class="editor-cuerpo vacio" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenido de la nota" data-placeholder="Empieza a escribir..."></div>
+        <div class="img-marco" hidden>
           <span class="asa asa-nw" data-esq="nw"></span><span class="asa asa-ne" data-esq="ne"></span>
           <span class="asa asa-sw" data-esq="sw"></span><span class="asa asa-se" data-esq="se"></span>
         </div>
       </div>
-      <input type="file" id="editor-imagen" accept="image/*" hidden>
+      <input type="file" class="editor-imagen" accept="image/*" hidden>
+    
+      <span class="asa-ventana asa-v-nw" data-esq="nw"></span>
+      <span class="asa-ventana asa-v-ne" data-esq="ne"></span>
+      <span class="asa-ventana asa-v-sw" data-esq="sw"></span>
+      <span class="asa-ventana asa-v-se" data-esq="se"></span>
+      <span class="asa-ventana asa-v-n" data-esq="n"></span>
+      <span class="asa-ventana asa-v-s" data-esq="s"></span>
+      <span class="asa-ventana asa-v-e" data-esq="e"></span>
+      <span class="asa-ventana asa-v-w" data-esq="w"></span>
     </section>
-  </div>
+  </template>
 
   <div id="toast" class="toast" role="status" hidden></div>
 
