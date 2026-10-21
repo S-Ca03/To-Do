@@ -782,10 +782,17 @@ function crearVentana(nota, origenEl) {
   const CLASES_IMAGEN = ["img-izq", "img-centro", "img-der", "flota-izq", "flota-der"];
   let imagenSel = null;
 
+  // Solo se escribe `hidden` cuando cambia: reescribir el mismo valor cuenta como un cambio
+  // del DOM y, en el celular, un cambio al tocar puede cancelar el foco del teclado.
   function deseleccionar() {
     imagenSel = null;
-    marco.hidden = true;
-    grupoImagen.hidden = true;
+    if (!marco.hidden) marco.hidden = true;
+    if (!grupoImagen.hidden) grupoImagen.hidden = true;
+  }
+
+  function mostrarGrupoTabla() {
+    const ocultar = !celdaActual();
+    if (grupoTabla.hidden !== ocultar) grupoTabla.hidden = ocultar;
   }
 
   // El marco es un elemento aparte (no forma parte del contenido guardado)
@@ -992,7 +999,9 @@ function crearVentana(nota, origenEl) {
 
       // ¿Qué hay bajo el puntero? Este editor, el de otra ventana o una tarjeta de la lista
       const bajo = document.elementFromPoint(e.clientX, e.clientY);
-      const cuerpoBajo = bajo?.closest(".editor-cuerpo") ?? null;
+      // Soltar sobre cualquier parte de una ventana vale (título, barra, margen): se coloca en
+      // su texto, al inicio o al final si el puntero queda fuera del área de escritura
+      const cuerpoBajo = bajo?.closest(".editor-cuerpo") ?? bajo?.closest(".ventana")?.querySelector(".editor-cuerpo") ?? null;
       marcarTarjeta(cuerpoBajo ? null : bajo?.closest(".nota") ?? null);
 
       destino = null;
@@ -1006,7 +1015,8 @@ function crearVentana(nota, origenEl) {
         const r = destino.rect;
         guia.style.left = `${zonaRect.left + 14}px`;
         guia.style.width = `${cuerpoBajo.clientWidth - 28}px`;
-        guia.style.top = `${(destino.bloque ? (destino.despues ? r.bottom : r.top) : zonaRect.top + 8) - 1.5}px`;
+        const yGuia = (destino.bloque ? (destino.despues ? r.bottom : r.top) : zonaRect.top + 8) - 1.5;
+        guia.style.top = `${Math.min(Math.max(yGuia, zonaRect.top), zonaRect.bottom - 3)}px`; // siempre visible
       }
       guia.hidden = !destino;
     };
@@ -1078,7 +1088,7 @@ function crearVentana(nota, origenEl) {
     else if (accion === "quitar-imagen") quitarImagen();
 
     programarGuardado();
-    grupoTabla.hidden = !celdaActual();
+    mostrarGrupoTabla();
     ubicarMarco();
   });
 
@@ -1132,13 +1142,16 @@ function crearVentana(nota, origenEl) {
     const seleccion = getSelection();
     if (!seleccion.rangeCount || !cuerpo.contains(seleccion.anchorNode)) return;
     rangoGuardado = seleccion.getRangeAt(0).cloneRange();
-    grupoTabla.hidden = !celdaActual();
+    mostrarGrupoTabla();
   });
 
 
   /* ----- ventana: foco, mover, redimensionar y cerrar ----- */
 
   function enfocar() {
+    // Si ya está al frente no se toca nada: cambiar el DOM justo al tocar hace que iOS Safari y
+    // algunos Android cancelen el foco, y entonces el teclado no se abre al tocar el texto.
+    if (ventanaActiva === v) return;
     v.style.zIndex = ++zSuperior;
     ventanaActiva = v;
     document.querySelectorAll(".ventana").forEach((o) => o.classList.toggle("activa", o === v));
@@ -1229,6 +1242,16 @@ function crearVentana(nota, origenEl) {
   }
 
   v.addEventListener("pointerdown", enfocar, true);
+
+  // En el celular el foco debe pedirse dentro de un gesto del usuario (touchend/clic). Si el
+  // navegador no lo dio por sí solo, se pide aquí. Si el dedo se movió fue un desplazamiento.
+  let toqueInicial = null;
+  cuerpo.addEventListener("touchstart", (e) => (toqueInicial = e.touches[0]), { passive: true });
+  cuerpo.addEventListener("touchend", (e) => {
+    const t = e.changedTouches[0];
+    const movido = toqueInicial && Math.hypot(t.clientX - toqueInicial.clientX, t.clientY - toqueInicial.clientY) > 10;
+    if (!movido && !cuerpo.contains(document.activeElement)) cuerpo.focus();
+  });
   v.querySelector(".cerrar-ventana").addEventListener("click", () => cerrar());
   escuchar(document, "keydown", (event) => {
     if (event.key === "Escape" && ventanaActiva === v) cerrar();

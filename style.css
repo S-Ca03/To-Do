@@ -1068,3 +1068,7 @@ body.arrastrando-imagen, body.arrastrando-imagen * { cursor: grabbing !important
 
 /* Tarjeta de la lista que recibirá la imagen que estás arrastrando */
 .nota.destino-soltar { outline: 3px solid var(--acento); outline-offset: 2px; box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.18); }
+
+/* Las animaciones de entrada ya no dejan un transform permanente (fill-mode "both"): un
+   ancestro con transform fijo da problemas con el teclado en iOS Safari */
+.editor.abriendo, .panel:not([hidden]), .tarea.nueva, .nota.nueva { animation-fill-mode: backwards; }
